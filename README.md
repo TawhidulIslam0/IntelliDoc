@@ -1,1 +1,52 @@
-# IntelliDoc-
+IntelliDoc
+IntelliDoc is an AI-powered document management system that enables semantic search over files. 
+Instead of relying on file names or exact keywords, IntelliDoc understands the meaning of documents using vector embeddings, allowing users to retrieve files based on context.
+
+Created by Tawhidul Islam, Mark Kim, Brinta Kandu, and Wu Jia Jun 
+
+##  Features
+
+###  File Management
+- Create Word documents (primary focus)
+- Upload / Download / Delete files
+- Folder management (hierarchical structure)
+- Profile-based organization:
+  - Personal
+  - School
+  - Work
+- Google OAuth authentication
+
+##  AI-Powered Semantic Search
+- Extracts text from:
+  - PDF
+  - DOCX
+  - TXT
+- Splits documents into chunks
+- Generates vector embeddings
+- Stores embeddings in PostgreSQL using pgvector
+- Performs similarity search using cosine distance
+- Returns relevant documents with contextual snippets
+
+Tech Stack
+### Frontend
+- React
+- Vite
+- JavaScript
+
+### Backend
+- FastAPI
+- Python
+- SQLAlchemy
+- Alembic
+
+### Database
+- PostgreSQL
+- pgvector
+
+### Storage
+- AWS S3 (or Local Storage)
+
+### Machine Learning
+- OpenAI Embeddings (or HuggingFace Sentence Transformers)
+- PyPDF / pdfplumber
+- python-docx
