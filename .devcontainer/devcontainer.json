@@ -17,5 +17,7 @@
     }
   },
 
+  "remoteUser": "vscode",
+
   "postCreateCommand": "cd frontend && npm install"
 }
