@@ -4,6 +4,61 @@ Instead of relying on file names or exact keywords, IntelliDoc understands the m
 
 Created by Tawhidul Islam, Mark Kim, Brinta Kandu, and Wu Jia Jun 
 
+# Prerequisites
+- [Docker Desktop](https://www.docker.com/products/docker-desktop) installed and running  
+  - Enable **WSL 2** if on Windows
+- [VS Code](https://code.visualstudio.com/) installed  
+- VS Code extensions (will auto-install in container):
+  - Python
+  - Docker
+  - Prettier
+  - ESLint
+
+## First-Time Setup (After Cloning)
+
+1. **Clone the repository**
+
+```bash
+git clone https://github.com/your-org/your-repo.git
+cd your-repo
+```
+2. **Open in VSCode**
+```bash
+code .
+```
+
+3. **Open in dev container**
+- VS Code will detect .devcontainer folder
+- Click Reopen in Container when prompted
+- This will:
+  - Build the Docker image (Python + Node + dependencies)
+  - Start PostgreSQL and backend container
+  - Mount your repo into the container
+  - Automatically install frontend dependencies
+
+## Backend setup
+
+1. **Database Connection**
+  - FastAPI connects to PostgreSQL via:
+```bash
+DATABASE_URL = "postgresql://postgres:postgres@db:5432/appdb"
+```
+
+2. **Start FastAPI server**
+```bash
+cd backend
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+## Frontend setup
+
+1. **Run React / Vite dev server**
+```bash
+cd frontend
+npm run dev -- --host
+```
+
+
 ##  Features
 
 ###  File Management
