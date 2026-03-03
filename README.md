@@ -36,7 +36,7 @@ code .
   - Mount your repo into the container
   - Automatically install frontend dependencies
 
-## Backend setup
+## Backend development setup
 
 1. **Database Connection**
   - FastAPI connects to PostgreSQL via:
@@ -44,18 +44,18 @@ code .
 DATABASE_URL = "postgresql://postgres:postgres@db:5432/appdb"
 ```
 
-2. **Start FastAPI server**
+2. **Start FastAPI server program**
 ```bash
 cd backend
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+fastapi dev --host 0.0.0.0
 ```
 
-## Frontend setup
+## Frontend development setup
 
 1. **Run React / Vite dev server**
 ```bash
 cd frontend
-npm run dev -- --host
+npm run dev 
 ```
 
 
