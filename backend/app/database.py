@@ -1,6 +1,8 @@
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import sessionmaker, DeclarativeBase
 import os
+
+# Using SQLAlchemy 2.0 style with mapped declarative style
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
@@ -8,4 +10,9 @@ engine = create_engine(DATABASE_URL)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-Base = declarative_base()
+class Base(DeclarativeBase):
+    pass
+
+def get_db():
+    with SessionLocal() as db:
+        yield db
