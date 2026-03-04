@@ -1,13 +1,19 @@
 import uuid 
+import jwt
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session 
 from sqlalchemy import select
 from typing import Annotated
+from datetime import timedelta
 
+from app.api.auth import ACCESS_TOKEN_EXPIRE_MINUTES, ALGORITHM, SECRET_KEY, create_access_token, verify_password, hash_password
 from app.models.user import User
 from app.database import get_db
 from pydantic import BaseModel, ConfigDict, Field, EmailStr
+
+# --- Pydantic Schemas ---
 
 class UserBase(BaseModel): # Base model for user-related data, used for both creation and response
     username: str = Field(min_length=6, max_length=15)
@@ -16,25 +22,57 @@ class UserBase(BaseModel): # Base model for user-related data, used for both cre
 class UserCreate(UserBase): # When creating a user, we also need the password
     password: str = Field(min_length=6)
 
-# Later fix privacy issues by not returning email and username in the response
 class UserResponse(UserBase):
     model_config = ConfigDict(from_attributes=True) # Allows Pydantic to read data from SQLAlchemy models using attribute access
     
     id: uuid.UUID
 
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    username: str | None = None
+
+# --- OAuth2 scheme (tells FastAPI where the token comes from) ---
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/users/login")
+
+def get_current_user(
+    token: Annotated[str, Depends(oauth2_scheme)],
+    db: Annotated[Session, Depends(get_db)]
+) -> User:
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+    except jwt.InvalidTokenError:
+        raise credentials_exception
+
+    result = db.execute(select(User).where(User.username == username))
+    user = result.scalars().first()
+    if user is None:
+        raise credentials_exception
+    return user
+
+
 router = APIRouter(prefix="/api/users", tags=["users"])
 
-# Creates the user in DB and returns the created user as response. Checks for existing username and email before creating a new user.
+
+# -- Create user --
 @router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def create_user(user: UserCreate, db: Annotated[Session, Depends(get_db)]):
 
-    # Check if username exists
     result = db.execute(select(User).where(User.username == user.username))
     existing_user = result.scalars().first()
     if existing_user:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already exists")
     
-    # Check if email exists
     result = db.execute(select(User).where(User.email == user.email))
     existing_email = result.scalars().first()
     if existing_email:
@@ -43,7 +81,7 @@ def create_user(user: UserCreate, db: Annotated[Session, Depends(get_db)]):
     new_user = User(
         username=user.username,
         email=user.email,
-        password_hash=user.password+"not_hashed_for_demo"
+        password_hash=hash_password(user.password)
     )
 
     db.add(new_user)
@@ -51,3 +89,28 @@ def create_user(user: UserCreate, db: Annotated[Session, Depends(get_db)]):
     db.refresh(new_user)
 
     return new_user
+
+# -- Login user and return JWT token --
+@router.post("/login", response_model=Token)
+def login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db: Annotated[Session, Depends(get_db)]):
+
+    result = db.execute(select(User).where(User.username == form_data.username))
+    user = result.scalars().first()
+    if not user:
+        verify_password(form_data.password, hash_password("dummy_password"))
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password", headers={"WWW-Authenticate": "Bearer"})
+    
+    if not verify_password(form_data.password, user.password_hash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password", headers={"WWW-Authenticate": "Bearer"})
+    
+    access_token = create_access_token(
+        data={"sub": user.username},
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+
+# -- Test protected route --
+@router.get("/me", response_model=UserResponse)
+def get_me(current_user: Annotated[User, Depends(get_current_user)]):
+    return current_user
