@@ -12,7 +12,9 @@
         "ms-python.python",
         "ms-azuretools.vscode-docker",
         "esbenp.prettier-vscode",
-        "dbaeumer.vscode-eslint"
+        "dbaeumer.vscode-eslint",
+        "mtxr.sqltools",
+        "mtxr.sqltools-driver-pg"
       ]
     }
   },
