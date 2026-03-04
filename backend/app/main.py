@@ -1,10 +1,9 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, APIRouter
 from app.database import engine, Base
-
-# Import models so they register with Base
-from app.models import user, folder, document
-
+from app.api.users import router as users_router  
+    
 app = FastAPI()
+app.include_router(users_router)
 
 # Create tables automatically
 Base.metadata.create_all(bind=engine)
