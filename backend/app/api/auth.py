@@ -4,7 +4,7 @@ from typing import Optional
 from pwdlib import PasswordHash
 
 # Change this to a long random secret in production 
-# This is a dummy variable 
+# This is a dummy variable to generate JWT tokens in development
 SECRET_KEY = "9f7bbeb810739079d79290c3da1cbe0c276eb6d67ba27e8c034e32181ea8077b"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
