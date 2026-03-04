@@ -24,14 +24,48 @@ const Divider = () => (
 const Toolbar = ({ editorRef }) => {
   const [fontSize, setFontSize] = useState(11);
   const [fontFamily, setFontFamily] = useState("Arial");
-  const [zoom, setZoom] = useState(1); // Zoom level
+  const [zoom, setZoom] = useState(1);
 
-  // Basic execCommand wrapper
+  // Track active formatting for visual selection
+  const [activeFormats, setActiveFormats] = useState({
+    bold: false,
+    italic: false,
+    underline: false,
+    align: "left", // left, center
+    list: null // "ul" or "ol"
+  });
+
+  // Basic execCommand wrapper with state update
   const applyCommand = (command, value = null) => {
     document.execCommand(command, false, value);
+
+    switch (command) {
+      case "bold":
+        setActiveFormats(prev => ({ ...prev, bold: !prev.bold }));
+        break;
+      case "italic":
+        setActiveFormats(prev => ({ ...prev, italic: !prev.italic }));
+        break;
+      case "underline":
+        setActiveFormats(prev => ({ ...prev, underline: !prev.underline }));
+        break;
+      case "justifyLeft":
+        setActiveFormats(prev => ({ ...prev, align: "left" }));
+        break;
+      case "justifyCenter":
+        setActiveFormats(prev => ({ ...prev, align: "center" }));
+        break;
+      case "insertUnorderedList":
+        setActiveFormats(prev => ({ ...prev, list: prev.list === "ul" ? null : "ul" }));
+        break;
+      case "insertOrderedList":
+        setActiveFormats(prev => ({ ...prev, list: prev.list === "ol" ? null : "ol" }));
+        break;
+      default:
+        break;
+    }
   };
 
-  // Apply custom style to selected text
   const applyStyleToSelection = (styleProp, value) => {
     const selection = window.getSelection();
     if (!selection.rangeCount) return;
@@ -52,7 +86,6 @@ const Toolbar = ({ editorRef }) => {
     applyStyleToSelection("fontSize", `${size}px`);
   };
 
-  // Update zoom for editor
   const updateZoom = (value) => {
     setZoom(value);
     if (editorRef && editorRef.current) {
@@ -70,7 +103,15 @@ const Toolbar = ({ editorRef }) => {
     color: "#444746",
     display: "flex",
     alignItems: "center",
+    transition: "all 0.2s ease",
   };
+
+  // Dynamic style based on active state
+  const getBtnStyle = (isActive) => ({
+    ...btnStyle,
+    backgroundColor: isActive ? "#E0E7FF" : "transparent",
+    color: isActive ? "#1E40AF" : "#444746",
+  });
 
   const selectStyle = { ...btnStyle, fontSize: "14px", backgroundColor: "transparent", outline: "none" };
 
@@ -88,7 +129,7 @@ const Toolbar = ({ editorRef }) => {
         overflowX: "auto",
       }}
     >
-      {/* 1. Search Bar */}
+      {/* Search Bar */}
       <input
         type="text"
         placeholder="Search features..."
@@ -103,14 +144,14 @@ const Toolbar = ({ editorRef }) => {
 
       <Divider />
 
-      {/* 2. History */}
+      {/* History */}
       <button style={btnStyle} onClick={() => applyCommand("undo")} title="Undo"><Undo size={18} /></button>
       <button style={btnStyle} onClick={() => applyCommand("redo")} title="Redo"><Redo size={18} /></button>
       <button style={btnStyle} onClick={() => window.print()} title="Print"><Printer size={18} /></button>
 
       <Divider />
 
-      {/* 3. Text Styles: Normal, Title, Subtitle, Headings */}
+      {/* Text Styles */}
       <select style={selectStyle} onChange={(e) => applyCommand("formatBlock", e.target.value)}>
         <option value="p">Normal text</option>
         <option value="h1">Title</option>
@@ -120,7 +161,7 @@ const Toolbar = ({ editorRef }) => {
         <option value="h5">Heading 3</option>
       </select>
 
-      {/* 4. Font Family */}
+      {/* Font Family */}
       <select
         style={{ ...selectStyle, width: "120px" }}
         value={fontFamily}
@@ -136,7 +177,7 @@ const Toolbar = ({ editorRef }) => {
 
       <Divider />
 
-      {/* 5. Font Size */}
+      {/* Font Size */}
       <div style={{ display: "flex", alignItems: "center" }}>
         <button style={btnStyle} onClick={() => updateFontSize(fontSize - 1)}>-</button>
         <input
@@ -150,7 +191,7 @@ const Toolbar = ({ editorRef }) => {
 
       <Divider />
 
-      {/* 6. Zoom */}
+      {/* Zoom */}
       <select style={selectStyle} value={zoom} onChange={(e) => updateZoom(parseFloat(e.target.value))}>
         <option value={0.75}>75%</option>
         <option value={0.9}>90%</option>
@@ -161,31 +202,26 @@ const Toolbar = ({ editorRef }) => {
 
       <Divider />
 
-      {/* 7. Basic formatting */}
-      <button style={btnStyle} onClick={() => applyCommand("bold")} title="Bold"><Bold size={18} /></button>
-      <button style={btnStyle} onClick={() => applyCommand("italic")} title="Italic"><Italic size={18} /></button>
-      <button style={btnStyle} onClick={() => applyCommand("underline")} title="Underline"><Underline size={18} /></button>
+      {/* Formatting Buttons */}
+      <button style={getBtnStyle(activeFormats.bold)} onClick={() => applyCommand("bold")} title="Bold"><Bold size={18} /></button>
+      <button style={getBtnStyle(activeFormats.italic)} onClick={() => applyCommand("italic")} title="Italic"><Italic size={18} /></button>
+      <button style={getBtnStyle(activeFormats.underline)} onClick={() => applyCommand("underline")} title="Underline"><Underline size={18} /></button>
 
       <Divider />
 
-      {/* 8. Alignment & Lists */}
-      <button style={btnStyle} onClick={() => applyCommand("justifyLeft")} title="Align Left"><AlignLeft size={18} /></button>
-      <button style={btnStyle} onClick={() => applyCommand("justifyCenter")} title="Align Center"><AlignCenter size={18} /></button>
-      <button style={btnStyle} onClick={() => applyCommand("insertUnorderedList")} title="Bulleted List"><List size={18} /></button>
-      <button style={btnStyle} onClick={() => applyCommand("insertOrderedList")} title="Numbered List"><ListOrdered size={18} /></button>
+      {/* Alignment & Lists */}
+      <button style={getBtnStyle(activeFormats.align === "left")} onClick={() => applyCommand("justifyLeft")} title="Align Left"><AlignLeft size={18} /></button>
+      <button style={getBtnStyle(activeFormats.align === "center")} onClick={() => applyCommand("justifyCenter")} title="Align Center"><AlignCenter size={18} /></button>
+      <button style={getBtnStyle(activeFormats.list === "ul")} onClick={() => applyCommand("insertUnorderedList")} title="Bulleted List"><List size={18} /></button>
+      <button style={getBtnStyle(activeFormats.list === "ol")} onClick={() => applyCommand("insertOrderedList")} title="Numbered List"><ListOrdered size={18} /></button>
 
       <Divider />
 
-      {/* 9. Images / Links / Text Color */}
+      {/* Images / Links / Text Color */}
       <button style={btnStyle} onClick={() => { const url = prompt("Enter Image URL:"); if (url) applyCommand("insertImage", url); }} title="Insert Image"><Image size={18} /></button>
       <button style={btnStyle} onClick={() => { const url = prompt("Enter Link URL:"); if (url) applyCommand("createLink", url); }} title="Insert Link"><Link size={18} /></button>
       <input type="color" onChange={(e) => applyCommand("foreColor", e.target.value)} style={{ marginLeft: "4px" }} title="Text Color" />
 
-      <Divider />
-
-      {/* 10. Comments / Tags */}
-      <button style={btnStyle} title="Profile Tag"><Tag size={18} /></button>
-      <button style={btnStyle} title="Comments/Notes"><MessageCircle size={18} /></button>
     </div>
   );
 };
