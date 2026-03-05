@@ -5,7 +5,7 @@ const HomeScreen = ({ documents = [], onCreateDoc, onOpenDoc }) => {
   const navigate = useNavigate();
 
   const handleNewDocument = () => {
-    const doc = onCreateDoc();
+    onCreateDoc(); // removed unused variable
     navigate("/editor");
   };
 
@@ -40,7 +40,9 @@ const HomeScreen = ({ documents = [], onCreateDoc, onOpenDoc }) => {
             >
               +
             </div>
-            <div style={{ marginTop: "10px", fontWeight: "500" }}>Blank document</div>
+            <div style={{ marginTop: "10px", fontWeight: "500" }}>
+              Blank document
+            </div>
           </div>
         </div>
       </div>
@@ -48,7 +50,9 @@ const HomeScreen = ({ documents = [], onCreateDoc, onOpenDoc }) => {
       {/* Recent Documents */}
       <div style={{ flex: 1, padding: "20px 0" }}>
         <div style={{ maxWidth: "850px", margin: "0 auto" }}>
-          <span style={{ fontWeight: "500", fontSize: "16px" }}>Recent documents</span>
+          <span style={{ fontWeight: "500", fontSize: "16px" }}>
+            Recent documents
+          </span>
 
           {documents.length === 0 ? (
             <div style={{ marginTop: "40px", textAlign: "center", color: "#5f6368" }}>
