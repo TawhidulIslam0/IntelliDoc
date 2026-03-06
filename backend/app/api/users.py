@@ -23,10 +23,9 @@ class UserCreate(UserBase): # When creating a user, we also need the password
     password: str = Field(min_length=6)
 
 class UserResponse(UserBase):
+    id: uuid.UUID
     model_config = ConfigDict(from_attributes=True) # Allows Pydantic to read data from SQLAlchemy models using attribute access
     
-    id: uuid.UUID
-
 class Token(BaseModel):
     access_token: str
     token_type: str
@@ -48,13 +47,13 @@ def get_current_user(
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
+        user_id: uuid.UUID = payload.get("sub")
+        if user_id is None:
             raise credentials_exception
     except jwt.InvalidTokenError:
         raise credentials_exception
 
-    result = db.execute(select(User).where(User.username == username))
+    result = db.execute(select(User).where(User.id == uuid.UUID(user_id)))
     user = result.scalars().first()
     if user is None:
         raise credentials_exception
@@ -87,7 +86,6 @@ def create_user(user: UserCreate, db: Annotated[Session, Depends(get_db)]):
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
-
     return new_user
 
 # -- Login user and return JWT token --
@@ -104,7 +102,7 @@ def login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db: Annota
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password", headers={"WWW-Authenticate": "Bearer"})
     
     access_token = create_access_token(
-        data={"sub": user.username},
+        data={"sub": str(user.id)},
         expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     return {"access_token": access_token, "token_type": "bearer"}
