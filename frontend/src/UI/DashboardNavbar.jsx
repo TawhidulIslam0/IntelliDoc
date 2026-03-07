@@ -1,6 +1,14 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
 
-export default function DashboardNavbar({ profile, setProfile }) {
+export default function DashboardNavbar({ profile, setProfile, user }) {
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    localStorage.removeItem("token"); // remove JWT
+    navigate("/login"); // redirect to login
+  };
+
   return (
     <header
       style={{
@@ -25,7 +33,7 @@ export default function DashboardNavbar({ profile, setProfile }) {
         IntelliDoc
       </div>
 
-      {/* Right: Profile Switch */}
+      {/* Center: Profile Switch */}
       <div style={{ display: "flex", gap: "10px" }}>
         {["Personal", "School", "Work"].map((p) => {
           const isActive = p === profile;
@@ -48,6 +56,29 @@ export default function DashboardNavbar({ profile, setProfile }) {
           );
         })}
       </div>
+
+      {/* Right: User Info and Logout */}
+      {user && (
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <span style={{ fontWeight: "500", color: "#111827" }}>
+            {user.username}
+          </span>
+          <button
+            onClick={handleLogout}
+            style={{
+              padding: "6px 12px",
+              backgroundColor: "#FECACA",
+              color: "#B91C1C",
+              border: "none",
+              borderRadius: "6px",
+              cursor: "pointer",
+              fontWeight: "500",
+            }}
+          >
+            Logout
+          </button>
+        </div>
+      )}
     </header>
   );
 }
