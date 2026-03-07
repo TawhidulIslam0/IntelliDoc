@@ -1,11 +1,40 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 const HomeScreen = ({ documents = [], onCreateDoc, onOpenDoc }) => {
   const navigate = useNavigate();
+  const [user, setUser] = useState(null); // store current user
+
+  // Fetch logged-in user on mount
+  useEffect(() => {
+    const fetchUser = async () => {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+
+      try {
+        const res = await fetch("http://localhost:8000/api/users/me", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!res.ok) throw new Error("Failed to fetch user");
+
+        const data = await res.json();
+        setUser(data);
+      } catch (err) {
+        console.error(err);
+        // token invalid? redirect to login
+        localStorage.removeItem("token");
+        navigate("/login");
+      }
+    };
+
+    fetchUser();
+  }, [navigate]);
 
   const handleNewDocument = () => {
-    onCreateDoc(); // removed unused variable
+    onCreateDoc();
     navigate("/editor");
   };
 
@@ -16,6 +45,13 @@ const HomeScreen = ({ documents = [], onCreateDoc, onOpenDoc }) => {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+      {/* User Greeting */}
+      {user && (
+        <div style={{ padding: "20px", fontSize: "18px", fontWeight: "500" }}>
+          Welcome, {user.username}!
+        </div>
+      )}
+
       {/* New Document Section */}
       <div style={{ backgroundColor: "#f1f3f4", padding: "18px 0 40px 0" }}>
         <div style={{ maxWidth: "850px", margin: "0 auto" }}>
@@ -55,7 +91,13 @@ const HomeScreen = ({ documents = [], onCreateDoc, onOpenDoc }) => {
           </span>
 
           {documents.length === 0 ? (
-            <div style={{ marginTop: "40px", textAlign: "center", color: "#5f6368" }}>
+            <div
+              style={{
+                marginTop: "40px",
+                textAlign: "center",
+                color: "#5f6368",
+              }}
+            >
               No documents yet. Create your first document above.
             </div>
           ) : (
