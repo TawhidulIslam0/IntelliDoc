@@ -38,7 +38,7 @@ export default function App() {
       if (!token) return;
 
       try {
-        const res = await fetch("http://localhost:8000/api/users/me", {
+        const res = await fetch("http://127.0.0.1:8000/api/users/me", {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!res.ok) throw new Error("Failed to fetch user");
