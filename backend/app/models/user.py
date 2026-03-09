@@ -11,10 +11,11 @@ from app.database import Base
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
-    username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
-    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    username: Mapped[str] = mapped_column(String(50), unique=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
 
     # Relationships
-    folders: Mapped[list["Folder"]] = relationship(back_populates="owner")
+    folders: Mapped[list["Folder"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
+    files: Mapped[list["File"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
