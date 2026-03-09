@@ -19,10 +19,11 @@ export default function App() {
     () => JSON.parse(sessionStorage.getItem("activeDoc")) || null
   );
   const [currentUser, setCurrentUser] = useState(null);
+  const [loading, setLoading] = useState(true); // loading while checking auth
 
   const navigate = useNavigate();
 
-  // Persist active document
+  // Persist active document in sessionStorage
   useEffect(() => {
     if (activeDoc) {
       sessionStorage.setItem("activeDoc", JSON.stringify(activeDoc));
@@ -31,11 +32,26 @@ export default function App() {
     }
   }, [activeDoc]);
 
+  // Load documents from localStorage on mount
+  useEffect(() => {
+    const storedDocs = JSON.parse(localStorage.getItem("documents"));
+    if (storedDocs) setDocuments(storedDocs);
+  }, []);
+
+  // Save documents to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem("documents", JSON.stringify(documents));
+  }, [documents]);
+
+
   // Fetch current user if token exists
   useEffect(() => {
     const fetchCurrentUser = async () => {
       const token = localStorage.getItem("token");
-      if (!token) return;
+      if (!token) {
+        setLoading(false);
+        return;
+      }
 
       try {
         const res = await fetch("http://127.0.0.1:8000/api/users/me", {
@@ -48,8 +64,11 @@ export default function App() {
         console.error(err);
         localStorage.removeItem("token");
         navigate("/login");
+      } finally {
+        setLoading(false);
       }
     };
+
     fetchCurrentUser();
   }, [navigate]);
 
@@ -63,30 +82,40 @@ export default function App() {
     };
     setDocuments((prev) => [newDoc, ...prev]);
     setActiveDoc(newDoc);
-    return newDoc;
+    navigate("/editor"); // redirect to editor immediately
   };
 
-  const handleOpenDoc = (doc) => setActiveDoc(doc);
+  const handleOpenDoc = (doc) => {
+    setActiveDoc(doc);
+    navigate("/editor"); // redirect to editor when opening
+  };
 
   const handleRenameDoc = (newTitle) => {
+    if (!activeDoc) return;
     setDocuments((prevDocs) =>
       prevDocs.map((doc) =>
         doc.id === activeDoc.id ? { ...doc, title: newTitle } : doc
       )
     );
-    setActiveDoc((prev) => ({ ...prev, title: newTitle }));
+    setActiveDoc((prev) => (prev ? { ...prev, title: newTitle } : prev));
   };
 
-  // Landing route: decide where to go based on user
+  // Landing route decides where to go
   const Landing = () => {
-    if (currentUser) return <Navigate to="/" replace />;
-    return <Navigate to="/signup" replace />; // show signup first for new users
+    if (currentUser) return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/signup" replace />; // new users see signup first
   };
 
+  // Show loading until auth check completes
+  if (loading) {
+    return <div style={{ padding: 40 }}>Loading...</div>;
+  }
+
+  // App Routes
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
       <Routes>
-        {/* Root: landing */}
+        {/* Root route */}
         <Route path="/" element={<Landing />} />
 
         {/* LOGIN */}
@@ -137,19 +166,8 @@ export default function App() {
                   </div>
                 </>
               ) : (
-                <>
-                  <DashboardNavbar
-                    profile={profile}
-                    setProfile={setProfile}
-                    user={currentUser}
-                  />
-                  <HomeScreen
-                    documents={documents}
-                    onCreateDoc={handleCreateDoc}
-                    onOpenDoc={handleOpenDoc}
-                    user={currentUser}
-                  />
-                </>
+                // Redirect to dashboard if no activeDoc
+                <Navigate to="/dashboard" replace />
               )}
             </ProtectedRoute>
           }
