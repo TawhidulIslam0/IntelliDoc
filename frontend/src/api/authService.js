@@ -1,4 +1,4 @@
- const API_BASE = "http://localhost:8000";
+ const API_BASE = "http://127.0.0.1:8000";
 
 // SIGNUP
 export const signupUser = async (username, email, password) => {
@@ -42,5 +42,3 @@ export const loginUser = async (username, password) => {
 
   return response.json();
 };
-
-
