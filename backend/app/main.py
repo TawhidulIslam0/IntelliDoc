@@ -1,14 +1,21 @@
 from fastapi import FastAPI, APIRouter
 from app.database import engine, Base
 from app.api.users import router as users_router  
-    
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI()
 app.include_router(users_router)
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],  # your frontend's origin
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(users_router)
+
+
 # Create tables automatically
 Base.metadata.create_all(bind=engine)
-
-
-@app.get("/")
-def root():
-    return {"message": "IntelliDoc Backend Running"}
