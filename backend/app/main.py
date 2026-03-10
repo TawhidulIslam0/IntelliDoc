@@ -1,7 +1,8 @@
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI
 from app.database import engine, Base
-from app.api.users import router as users_router  
+from app.api.users import router as users_router
 from fastapi.middleware.cors import CORSMiddleware
+from app.models import user, folder, file
 
 app = FastAPI()
 app.include_router(users_router)
@@ -14,7 +15,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(users_router)
 
 
 # Create tables automatically
