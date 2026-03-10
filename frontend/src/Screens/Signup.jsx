@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { signupUser } from "../api/authService";
 import { useNavigate } from "react-router-dom";
 import "./LoginSignup.css";
@@ -9,14 +9,24 @@ import password_icon from "../assets/password.png";
 import google_icon from "../assets/google_icon_logo.png"; 
 
 const Signup = () => {
+
+  // State for inputs, errors, loading
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState(""); 
   const [loading, setLoading] = useState(false); 
 
-  const navigate = useNavigate(); 
+  const navigate = useNavigate();
 
+  // Redirect logged-in users away from signup
+  useEffect(() => {
+    if (localStorage.getItem("token")) {
+      navigate("/dashboard"); // send directly to dashboard
+    }
+  }, [navigate]);
+
+  // Handle signup submit
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(""); 
@@ -24,6 +34,8 @@ const Signup = () => {
 
     try {
       await signupUser(username, email, password); 
+
+      // Redirect to login after successful signup
       navigate("/login"); 
     } catch (err) {
       setError(err.message || "Signup failed"); 
