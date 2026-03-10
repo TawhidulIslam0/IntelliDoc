@@ -1,40 +1,68 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { loginUser } from "../api/authService";
 import { useNavigate } from "react-router-dom";
 import "./LoginSignup.css";
 
-import email_icon from "../assets/email.png";
+// Icons
+import user_icon from "../assets/person.png"; // fixed from email_icon
 import password_icon from "../assets/password.png";
 import google_icon from "../assets/google_icon_logo.png"; 
 
 const Login = () => {
 
+  // Local state for inputs and error messages
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState(""); 
 
   const navigate = useNavigate();
 
+  // check if token exists and validate user session
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    // Try to fetch current user, if valid, redirect to dashboard
+    const validateToken = async () => {
+      try {
+        const res = await fetch("http://localhost:8000/api/users/me", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (res.ok) {
+          navigate("/dashboard"); // user is already logged in
+        } else {
+          localStorage.removeItem("token"); // invalid token, clear it
+        }
+      } catch (err) {
+        console.error(err);
+        localStorage.removeItem("token");
+      }
+    };
+
+    validateToken();
+  }, [navigate]);
+
+  // Handle form submission for login
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    setError(""); 
+    setError(""); // clear previous errors
 
     try {
-    
       const data = await loginUser(username, password);
 
-     
+      // Save token in localStorage
       localStorage.setItem("token", data.access_token);
-      navigate("/");
 
+      // Navigate to dashboard after successful login
+      navigate("/dashboard");
     } catch (err) {
-     
       setError(err.message || "An error occurred during login.");
     }
   };
 
-  // placeholder function for Google login
+  // Placeholder function for Google login
   const handleGoogleLogin = () => {
     alert("Google login clicked!");
     // implement OAuth logic later
@@ -68,7 +96,7 @@ const Login = () => {
 
           {/* Username input */}
           <div className="input">
-            <img src={email_icon} alt="" />
+            <img src={user_icon} alt="User" /> {/* fixed icon */}
             <input
               type="text"
               placeholder="Username"
@@ -80,7 +108,7 @@ const Login = () => {
 
           {/* Password input */}
           <div className="input">
-            <img src={password_icon} alt="" />
+            <img src={password_icon} alt="Password" />
             <input
               type="password"
               placeholder="Password"
