@@ -3,9 +3,11 @@ from app.database import engine, Base
 from app.api.users import router as users_router
 from fastapi.middleware.cors import CORSMiddleware
 from app.models import user, folder, file
+from app.api.files import router as files_router
 
 app = FastAPI()
 app.include_router(users_router)
+app.include_router(files_router, prefix="/api")
 
 app.add_middleware(
     CORSMiddleware,
