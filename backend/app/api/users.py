@@ -63,7 +63,7 @@ def get_current_user(
 router = APIRouter(prefix="/api/users", tags=["users"])
 
 
-# -- Create user --
+# Endpoint to create a new user with validation for unique username and email, and password hashing
 @router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def create_user(user: UserCreate, db: Annotated[Session, Depends(get_db)]):
 
@@ -88,7 +88,7 @@ def create_user(user: UserCreate, db: Annotated[Session, Depends(get_db)]):
     db.refresh(new_user)
     return new_user
 
-# -- Login user and return JWT token --
+# Endpoint for user login that validates credentials and returns a JWT access token
 @router.post("/login", response_model=Token)
 def login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db: Annotated[Session, Depends(get_db)]):
 
