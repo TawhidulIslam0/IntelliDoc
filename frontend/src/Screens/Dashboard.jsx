@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { uploadFile } from "../api/fileService";
 import uploadIcon from "../assets/uploadbutton.png";
 
 const HomeScreen = ({ onCreateDoc, onOpenDoc }) => {
@@ -7,11 +8,8 @@ const HomeScreen = ({ onCreateDoc, onOpenDoc }) => {
   const [user, setUser] = useState(null);
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
-  
-  //  Local state for files from the database 
   const [fetchedDocuments, setFetchedDocuments] = useState([]);
 
-  // Function to get the real files 
   const fetchRecentFiles = async () => {
     const token = localStorage.getItem("token");
     if (!token) return;
@@ -29,7 +27,6 @@ const HomeScreen = ({ onCreateDoc, onOpenDoc }) => {
     }
   };
 
-  // Fetch logged-in user and files
   useEffect(() => {
     const initialize = async () => {
       const token = localStorage.getItem("token");
@@ -46,8 +43,7 @@ const HomeScreen = ({ onCreateDoc, onOpenDoc }) => {
         if (!res.ok) throw new Error("Failed to fetch user");
         const data = await res.json();
         setUser(data);
-        
-        // Fetch the files after confirming user is logged in 
+
         await fetchRecentFiles();
       } catch (err) {
         console.error(err);
@@ -95,24 +91,16 @@ const HomeScreen = ({ onCreateDoc, onOpenDoc }) => {
   const handleUpload = async () => {
     if (!file) return alert("Please select a file first.");
 
-    const token = localStorage.getItem("token");
-    const formData = new FormData();
-    formData.append("file", file);
-
     try {
       setUploading(true);
-      const res = await fetch("http://localhost:8000/api/files/upload", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
 
-      if (!res.ok) throw new Error("Upload failed");
+      // Use presigned URL upload
+      await uploadFile(file);
+
       alert("File uploaded successfully");
       setFile(null);
-      
-      // Refresh the list immediately after upload 
-      await fetchRecentFiles();
+
+      await fetchRecentFiles(); // refresh list
     } catch (err) {
       console.error(err);
       alert("File upload failed: " + err.message);
@@ -148,43 +136,23 @@ const HomeScreen = ({ onCreateDoc, onOpenDoc }) => {
       <div style={{ flex: 1, padding: 20 }}>
         <div style={{ maxWidth: 850, margin: "0 auto" }}>
           <span style={{ fontWeight: 500, fontSize: 16 }}>Recent documents</span>
-          
-          {/* Use fetchedDocuments.length*/}
           {fetchedDocuments.length === 0 ? (
             <div style={{ marginTop: 40, textAlign: "center", color: "#5f6368" }}>
               No documents yet. Create or upload your first document.
             </div>
           ) : (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(5, 150px)",
-                gap: 25, marginTop: 20,
-              }}
-            >
-              {/*Map over fetchedDocuments*/}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 150px)", gap: 25, marginTop: 20 }}>
               {fetchedDocuments.map((doc) => (
-                <div
-                  key={doc.id}
-                  onClick={() => handleOpenExistingDoc(doc)}
-                  style={{ width: 150, cursor: "pointer" }}
-                >
-                  <div
-                    style={{
-                      height: 190, border: "1px solid #dadce0",
-                      borderRadius: 4, backgroundColor: "white",
-                      display: "flex", alignItems: "center", justifyContent: "center"
-                    }}
-                  >
-                    <span style={{fontSize: "40px"}}>📄</span>
+                <div key={doc.id} onClick={() => handleOpenExistingDoc(doc)} style={{ width: 150, cursor: "pointer" }}>
+                  <div style={{ height: 190, border: "1px solid #dadce0", borderRadius: 4, backgroundColor: "white", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <span style={{ fontSize: "40px" }}>📄</span>
                   </div>
                   <div style={{ padding: "10px 0" }}>
-                    {/* Backend uses 'name', size_bytes instead of title/createdAt */}
                     <div style={{ fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {doc.name}
+                      {doc.name}
                     </div>
                     <div style={{ fontSize: 12, color: "#5f6368" }}>
-                        {(doc.size_bytes / 1024).toFixed(1)} KB
+                      {(doc.size_bytes / 1024).toFixed(1)} KB
                     </div>
                   </div>
                 </div>
