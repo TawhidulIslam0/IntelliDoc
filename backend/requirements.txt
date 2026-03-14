@@ -6,3 +6,4 @@ pypdf
 alembic
 PyJWT
 pwdlib[argon2]
+boto3

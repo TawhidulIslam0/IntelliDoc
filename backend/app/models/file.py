@@ -18,6 +18,10 @@ class File(Base):
     name: Mapped[str] = mapped_column(String(255))
     s3_key: Mapped[str] = mapped_column(Text, unique=True)
     size_bytes: Mapped[int] = mapped_column(BigInteger)
+    status: Mapped[str] = mapped_column(String(50), default="pending")
+    mime_type: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[str] = mapped_column(String(50))
+    updated_at: Mapped[str] = mapped_column(String(50))
 
     # Relationships
     owner: Mapped["User"] = relationship(back_populates="files")
