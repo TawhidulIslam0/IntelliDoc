@@ -1,8 +1,6 @@
 const API_URL = "http://localhost:8000/api";
 
-/**
- * Fetch list of files for the current user
- */
+// Fetch list of files for the current use
 export const getFiles = async () => {
   const token = localStorage.getItem("token");
 
@@ -19,18 +17,14 @@ export const getFiles = async () => {
   return response.json();
 };
 
-/**
- * Validate TXT/PDF file 
- */
+// Validate TXT/PDF file 
 const validateFileType = (file) => {
   const name = file.name.toLowerCase();
   if (name.endsWith(".txt") || name.endsWith(".pdf")) return;
   throw new Error("Only TXT and PDF files are allowed");
 };
 
-/**
- * Upload file using presigned URL
- */
+// Upload file using presigned URL
 export const uploadFile = async (file, folderId = null) => {
   validateFileType(file);
   const token = localStorage.getItem("token");
@@ -71,4 +65,40 @@ export const uploadFile = async (file, folderId = null) => {
   }
 
   return { presigned_url };
+};
+
+
+// Preview URL for a file
+export const getPreviewUrl = async (fileId) => {
+  const token = localStorage.getItem("token");
+
+  const response = await fetch(`${API_URL}/files/${fileId}/preview`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("Preview fetch error:", errorText);
+    throw new Error("Failed to get preview URL");
+  }
+
+  return response.json();
+};
+
+
+// Download URL for a file
+export const getDownloadUrl = async (fileId) => {
+  const token = localStorage.getItem("token");
+
+  const response = await fetch(`${API_URL}/files/${fileId}/download`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("Download fetch error:", errorText);
+    throw new Error("Failed to get download URL");
+  }
+
+  return response.json();
 };
