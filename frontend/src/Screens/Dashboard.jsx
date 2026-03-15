@@ -2,13 +2,16 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { uploadFile } from "../api/fileService";
 import uploadIcon from "../assets/uploadbutton.png";
+import { getPreviewUrl } from "../api/fileService"; 
 
-const HomeScreen = ({ onCreateDoc, onOpenDoc }) => {
+const HomeScreen = ({ onCreateDoc }) => { 
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [fetchedDocuments, setFetchedDocuments] = useState([]);
+
+  const [previewUrl, setPreviewUrl] = useState(null); // added for file preview 
 
   const fetchRecentFiles = async () => {
     const token = localStorage.getItem("token");
@@ -60,23 +63,29 @@ const HomeScreen = ({ onCreateDoc, onOpenDoc }) => {
     navigate("/editor");
   };
 
-  const handleOpenExistingDoc = (doc) => {
-    onOpenDoc(doc);
-    navigate("/editor");
+  // Preview file instead of opening editor
+  const handleOpenExistingDoc = async (doc) => {
+    try {
+      const { url } = await getPreviewUrl(doc.id);
+      setPreviewUrl(url);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to preview file");
+    }
   };
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (!selectedFile) return;
-
+// Only txt and pdf allowed for now
     const allowedTypes = [
       "text/plain", "application/pdf", "application/msword",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       "image/png", "image/jpeg",
-    ];
+    ]; 
 
     if (!allowedTypes.includes(selectedFile.type)) {
-      alert("Unsupported file type.");
+      alert("Only TXT and PDF files are allowed.");
       return;
     }
 
@@ -145,7 +154,9 @@ const HomeScreen = ({ onCreateDoc, onOpenDoc }) => {
               {fetchedDocuments.map((doc) => (
                 <div key={doc.id} onClick={() => handleOpenExistingDoc(doc)} style={{ width: 150, cursor: "pointer" }}>
                   <div style={{ height: 190, border: "1px solid #dadce0", borderRadius: 4, backgroundColor: "white", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <span style={{ fontSize: "40px" }}>📄</span>
+                    <span style={{ fontSize: "16px", fontWeight: 600 }}>
+                      {doc.mime_type === "application/pdf" ? "PDF" : "TXT"} 
+                    </span>
                   </div>
                   <div style={{ padding: "10px 0" }}>
                     <div style={{ fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -181,6 +192,43 @@ const HomeScreen = ({ onCreateDoc, onOpenDoc }) => {
           {uploading ? "Uploading..." : `Upload ${file.name}`}
         </button>
       )}
+
+      {/* added - preview modal */}
+      {previewUrl && (
+        <div
+          onClick={() => setPreviewUrl(null)}
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            backgroundColor: "rgba(0,0,0,0.7)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 2000
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "80%",
+              height: "80%",
+              backgroundColor: "white",
+              borderRadius: 8,
+              overflow: "hidden"
+            }}
+          >
+            <iframe
+              src={previewUrl}
+              title="File Preview"
+              style={{ width: "100%", height: "100%", border: "none" }}
+            />
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
