@@ -97,3 +97,80 @@ async def initiate_upload(
     db.refresh(new_file)
 
     return InitiateUploadResponse(file_id=new_file.id, presigned_url=presigned_url)
+
+
+# List files for dashboard
+@router.get("/")
+async def list_files(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)]
+):
+    files = db.execute(
+        select(File).where(File.owner_id == current_user.id)
+    ).scalars().all()
+
+    return [
+        {
+            "id": str(file.id),
+            "name": file.name,
+            "size_bytes": file.size_bytes,
+            "mime_type": file.mime_type,
+            "created_at": file.created_at
+        }
+        for file in files
+    ]
+
+
+# Preview file using presigned url
+@router.get("/{file_id}/preview")
+async def preview_file(
+    file_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)]
+):
+    file = db.get(File, file_id)
+
+    if not file or file.owner_id != current_user.id:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    try:
+        presigned_url = s3.generate_presigned_url(
+            "get_object",
+            Params={
+                "Bucket": BUCKET_NAME,
+                "Key": file.s3_key
+            },
+            ExpiresIn=PRESIGNED_URL_EXPIRY
+        )
+    except ClientError:
+        raise HTTPException(status_code=500, detail="Failed to generate preview URL")
+
+    return {"url": presigned_url}
+
+
+# Download file using presigned url
+@router.get("/{file_id}/download")
+async def download_file(
+    file_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)]
+):
+    file = db.get(File, file_id)
+
+    if not file or file.owner_id != current_user.id:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    try:
+        presigned_url = s3.generate_presigned_url(
+            "get_object",
+            Params={
+                "Bucket": BUCKET_NAME,
+                "Key": file.s3_key,
+                "ResponseContentDisposition": f'attachment; filename="{file.name}"'
+            },
+            ExpiresIn=PRESIGNED_URL_EXPIRY
+        )
+    except ClientError:
+        raise HTTPException(status_code=500, detail="Failed to generate download URL")
+
+    return {"url": presigned_url}
