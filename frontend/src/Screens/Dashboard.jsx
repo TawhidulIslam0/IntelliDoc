@@ -1,35 +1,21 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { uploadFile } from "../api/fileService";
+import { uploadFile, getPreviewUrl } from "../api/fileService";
+import { getFolders, createFolder } from "../api/folderService";
 import uploadIcon from "../assets/uploadbutton.png";
-import { getPreviewUrl } from "../api/fileService"; 
+import folderIcon from "../assets/folderbutton.png";
 
-const HomeScreen = ({ onCreateDoc }) => { 
+const HomeScreen = ({ onCreateDoc }) => {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [fetchedDocuments, setFetchedDocuments] = useState([]);
+  const [folders, setFolders] = useState([]);
+  const [currentFolderId, setCurrentFolderId] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
 
-  const [previewUrl, setPreviewUrl] = useState(null); // added for file preview 
-
-  const fetchRecentFiles = async () => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-
-    try {
-      const res = await fetch("http://localhost:8000/api/files/", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setFetchedDocuments(data);
-      }
-    } catch (err) {
-      console.error("Failed to fetch files:", err);
-    }
-  };
-
+  // Fetch user and initial data
   useEffect(() => {
     const initialize = async () => {
       const token = localStorage.getItem("token");
@@ -47,7 +33,8 @@ const HomeScreen = ({ onCreateDoc }) => {
         const data = await res.json();
         setUser(data);
 
-        await fetchRecentFiles();
+        await fetchFolders();
+        await fetchFiles();
       } catch (err) {
         console.error(err);
         localStorage.removeItem("token");
@@ -58,12 +45,46 @@ const HomeScreen = ({ onCreateDoc }) => {
     initialize();
   }, [navigate]);
 
+  // Fetch folders
+  const fetchFolders = async () => {
+    try {
+      const data = await getFolders();
+      setFolders(data);
+    } catch (err) {
+      console.error("Failed to fetch folders:", err);
+    }
+  };
+
+  // Fetch files
+  const fetchFiles = async (folderId = null) => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    try {
+      const url = folderId
+        ? `http://localhost:8000/api/files/?folder_id=${folderId}`
+        : `http://localhost:8000/api/files/`;
+
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setFetchedDocuments(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch files:", err);
+    }
+  };
+
+  // Create blank document
   const handleNewDocument = () => {
     onCreateDoc();
     navigate("/editor");
   };
 
-  // Preview file instead of opening editor
+  // Preview file
   const handleOpenExistingDoc = async (doc) => {
     try {
       const { url } = await getPreviewUrl(doc.id);
@@ -74,18 +95,22 @@ const HomeScreen = ({ onCreateDoc }) => {
     }
   };
 
+  // File selection
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (!selectedFile) return;
-// Only txt and pdf allowed for now
+
     const allowedTypes = [
-      "text/plain", "application/pdf", "application/msword",
+      "text/plain",
+      "application/pdf",
+      "application/msword",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "image/png", "image/jpeg",
-    ]; 
+      "image/png",
+      "image/jpeg",
+    ];
 
     if (!allowedTypes.includes(selectedFile.type)) {
-      alert("Only TXT and PDF files are allowed.");
+      alert("Only TXT, PDF, Word, and Images allowed.");
       return;
     }
 
@@ -97,19 +122,19 @@ const HomeScreen = ({ onCreateDoc }) => {
     setFile(selectedFile);
   };
 
+  // Upload file
   const handleUpload = async () => {
     if (!file) return alert("Please select a file first.");
 
     try {
       setUploading(true);
 
-      // Use presigned URL upload
-      await uploadFile(file);
+      await uploadFile(file, currentFolderId);
 
       alert("File uploaded successfully");
       setFile(null);
 
-      await fetchRecentFiles(); // refresh list
+      await fetchFiles(currentFolderId);
     } catch (err) {
       console.error(err);
       alert("File upload failed: " + err.message);
@@ -118,50 +143,167 @@ const HomeScreen = ({ onCreateDoc }) => {
     }
   };
 
+  // Create folder
+  const handleCreateFolder = async () => {
+    const name = prompt("Enter folder name");
+    if (!name) return;
+
+    try {
+      await createFolder(name, currentFolderId);
+      fetchFolders();
+    } catch (err) {
+      console.error(err);
+      alert("Failed to create folder");
+    }
+  };
+
+  // Open folder
+  const handleFolderClick = (folder) => {
+    setCurrentFolderId(folder.id);
+    fetchFiles(folder.id);
+  };
+
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-      {user && <div style={{ padding: 20, fontSize: 18, fontWeight: 500 }}>Welcome, {user.username}!</div>}
+      {user && (
+        <div style={{ padding: 20, fontSize: 18, fontWeight: 500 }}>
+          Welcome, {user.username}!
+        </div>
+      )}
 
+      {/* New Document Section */}
       <div style={{ backgroundColor: "#f1f3f4", padding: "18px 0 40px 0" }}>
         <div style={{ maxWidth: 850, margin: "0 auto" }}>
           <span style={{ fontSize: 16 }}>Start a new document</span>
+
           <div style={{ marginTop: 15, display: "flex", gap: 30 }}>
             <div>
               <div
                 onClick={handleNewDocument}
                 style={{
-                  width: 150, height: 190, backgroundColor: "white",
-                  border: "1px solid #dadce0", borderRadius: 4,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 50, color: "#4285f4", cursor: "pointer",
+                  width: 150,
+                  height: 190,
+                  backgroundColor: "white",
+                  border: "1px solid #dadce0",
+                  borderRadius: 4,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 50,
+                  color: "#4285f4",
+                  cursor: "pointer",
                 }}
-              >+</div>
-              <div style={{ marginTop: 10, fontWeight: 500 }}>Blank document</div>
+              >
+                +
+              </div>
+
+              <div style={{ marginTop: 10, fontWeight: 500 }}>
+                Blank document
+              </div>
             </div>
           </div>
         </div>
       </div>
 
+      {/* Folders */}
       <div style={{ flex: 1, padding: 20 }}>
         <div style={{ maxWidth: 850, margin: "0 auto" }}>
-          <span style={{ fontWeight: 500, fontSize: 16 }}>Recent documents</span>
+          <span style={{ fontWeight: 500, fontSize: 16 }}>Folders</span>
+
+          <div
+            style={{
+              display: "flex",
+              gap: 25,
+              marginTop: 20,
+              flexWrap: "wrap",
+            }}
+          >
+            {folders.map((folder) => (
+              <div
+                key={folder.id}
+                onClick={() => handleFolderClick(folder)}
+                style={{
+                  width: 150,
+                  height: 100,
+                  border: "1px solid #dadce0",
+                  borderRadius: 4,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  backgroundColor: "#fff",
+                }}
+              >
+                📁 {folder.name}
+              </div>
+            ))}
+          </div>
+
+          {/* Files */}
+          <span
+            style={{
+              fontWeight: 500,
+              fontSize: 16,
+              marginTop: 40,
+              display: "block",
+            }}
+          >
+            Files {currentFolderId ? "(Inside Folder)" : ""}
+          </span>
+
           {fetchedDocuments.length === 0 ? (
-            <div style={{ marginTop: 40, textAlign: "center", color: "#5f6368" }}>
-              No documents yet. Create or upload your first document.
+            <div
+              style={{
+                marginTop: 20,
+                textAlign: "center",
+                color: "#5f6368",
+              }}
+            >
+              No documents yet. Upload your first document.
             </div>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 150px)", gap: 25, marginTop: 20 }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(5, 150px)",
+                gap: 25,
+                marginTop: 20,
+              }}
+            >
               {fetchedDocuments.map((doc) => (
-                <div key={doc.id} onClick={() => handleOpenExistingDoc(doc)} style={{ width: 150, cursor: "pointer" }}>
-                  <div style={{ height: 190, border: "1px solid #dadce0", borderRadius: 4, backgroundColor: "white", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <span style={{ fontSize: "16px", fontWeight: 600 }}>
-                      {doc.mime_type === "application/pdf" ? "PDF" : "TXT"} 
+                <div
+                  key={doc.id}
+                  onClick={() => handleOpenExistingDoc(doc)}
+                  style={{ width: 150, cursor: "pointer" }}
+                >
+                  <div
+                    style={{
+                      height: 190,
+                      border: "1px solid #dadce0",
+                      borderRadius: 4,
+                      backgroundColor: "white",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <span style={{ fontSize: 16, fontWeight: 600 }}>
+                      {doc.mime_type === "application/pdf" ? "PDF" : "TXT"}
                     </span>
                   </div>
+
                   <div style={{ padding: "10px 0" }}>
-                    <div style={{ fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    <div
+                      style={{
+                        fontWeight: 500,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
                       {doc.name}
                     </div>
+
                     <div style={{ fontSize: 12, color: "#5f6368" }}>
                       {(doc.size_bytes / 1024).toFixed(1)} KB
                     </div>
@@ -173,27 +315,69 @@ const HomeScreen = ({ onCreateDoc }) => {
         </div>
       </div>
 
-      <input type="file" id="fileUploadInput" style={{ display: "none" }} onChange={handleFileChange} />
-      <img
-        src={uploadIcon} alt="Upload"
-        onClick={() => document.getElementById("fileUploadInput").click()}
-        style={{ position: "fixed", bottom: 30, right: 30, width: 60, height: 60, cursor: "pointer", zIndex: 1000 }}
+      {/* Hidden file input */}
+      <input
+        type="file"
+        id="fileUploadInput"
+        style={{ display: "none" }}
+        onChange={handleFileChange}
       />
-      
+
+      {/* Folder Button */}
+      <img
+        src={folderIcon}
+        alt="Create Folder"
+        onClick={handleCreateFolder}
+        style={{
+          position: "fixed",
+          bottom: 110,
+          right: 30,
+          width: 60,
+          height: 60,
+          cursor: "pointer",
+          zIndex: 1000,
+        }}
+      />
+
+      {/* Upload Button */}
+      <img
+        src={uploadIcon}
+        alt="Upload"
+        onClick={() => document.getElementById("fileUploadInput").click()}
+        style={{
+          position: "fixed",
+          bottom: 30,
+          right: 30,
+          width: 60,
+          height: 60,
+          cursor: "pointer",
+          zIndex: 1000,
+        }}
+      />
+
+      {/* Upload confirmation button */}
       {file && (
         <button
-          onClick={handleUpload} disabled={uploading}
+          onClick={handleUpload}
+          disabled={uploading}
           style={{
-            position: "fixed", bottom: 100, right: 30, padding: "10px 20px",
-            backgroundColor: "#4285f4", color: "white", border: "none",
-            borderRadius: 6, cursor: "pointer", zIndex: 1000,
+            position: "fixed",
+            bottom: 190,
+            right: 30,
+            padding: "10px 20px",
+            backgroundColor: "#4285f4",
+            color: "white",
+            border: "none",
+            borderRadius: 6,
+            cursor: "pointer",
+            zIndex: 1000,
           }}
         >
           {uploading ? "Uploading..." : `Upload ${file.name}`}
         </button>
       )}
 
-      {/* added - preview modal */}
+      {/* File Preview */}
       {previewUrl && (
         <div
           onClick={() => setPreviewUrl(null)}
@@ -207,7 +391,7 @@ const HomeScreen = ({ onCreateDoc }) => {
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
-            zIndex: 2000
+            zIndex: 2000,
           }}
         >
           <div
@@ -217,7 +401,7 @@ const HomeScreen = ({ onCreateDoc }) => {
               height: "80%",
               backgroundColor: "white",
               borderRadius: 8,
-              overflow: "hidden"
+              overflow: "hidden",
             }}
           >
             <iframe
@@ -228,7 +412,6 @@ const HomeScreen = ({ onCreateDoc }) => {
           </div>
         </div>
       )}
-
     </div>
   );
 };
