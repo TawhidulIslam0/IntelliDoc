@@ -39,6 +39,7 @@ class InitiateUploadRequest(BaseModel):
     size_bytes: int
     mime_type: str
     folder_id: Optional[uuid.UUID] = None
+    profile_id: uuid.UUID 
 
 class InitiateUploadResponse(BaseModel):
     file_id: uuid.UUID
@@ -57,6 +58,7 @@ async def initiate_upload(
     existing_file = db.execute(
         select(File).where(
             File.owner_id == current_user.id,
+            File.profile_id == payload.profile_id,  # <-- NEW: check duplicates per profile
             File.folder_id == payload.folder_id,
             File.name == payload.name
         )
@@ -65,7 +67,7 @@ async def initiate_upload(
     if existing_file:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="A file with the same name already exists in this folder."
+            detail="A file with the same name already exists in this folder and profile."
         )
 
     # Generate unique file ID and S3 key
@@ -87,6 +89,7 @@ async def initiate_upload(
     new_file = File(
         id=file_id,
         owner_id=current_user.id,
+        profile_id=payload.profile_id,  
         folder_id=payload.folder_id,
         name=payload.name,
         s3_key=s3_key,
@@ -109,9 +112,13 @@ async def initiate_upload(
 async def list_files(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
+    profile_id: uuid.UUID,  # must provide profile to list files
     folder_id: Optional[uuid.UUID] = None
 ):
-    stmt = select(File).where(File.owner_id == current_user.id)
+    stmt = select(File).where(
+        File.owner_id == current_user.id,
+        File.profile_id == profile_id 
+    )
 
     if folder_id:
         stmt = stmt.where(File.folder_id == folder_id)
@@ -129,6 +136,7 @@ async def list_files(
         }
         for file in files
     ]
+
 # Generate presigned URL for preview
 @router.get("/{file_id}/preview")
 async def preview_file(
