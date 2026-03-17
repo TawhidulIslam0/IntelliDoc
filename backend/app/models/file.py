@@ -26,3 +26,4 @@ class File(Base):
     # Relationships
     owner: Mapped["User"] = relationship(back_populates="files")
     folder: Mapped[Optional["Folder"]] = relationship(back_populates="files")
+    profile: Mapped["Profile"] = relationship(back_populates="files")
