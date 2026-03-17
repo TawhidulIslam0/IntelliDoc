@@ -7,6 +7,7 @@ from app.database import Base
 from app.models.user import User
 from app.models.file import File
 from app.models.folder import Folder
+from app.models.profile import Profile
 
 config = context.config
 fileConfig(config.config_file_name)
