@@ -17,12 +17,14 @@ router = APIRouter(prefix="/folders", tags=["folders"])
 class CreateFolderRequest(BaseModel):
     name: str
     parent_id: Optional[uuid.UUID] = None
+    profile_id: uuid.UUID  # required profile for folder
 
 
 class FolderResponse(BaseModel):
     id: uuid.UUID
     owner_id: uuid.UUID
     parent_id: Optional[uuid.UUID] = None
+    profile_id: uuid.UUID  # include profile in response
     name: str
     model_config = ConfigDict(from_attributes=True)
 
@@ -39,7 +41,8 @@ def create_folder(
     if payload.parent_id:
         stmt = select(Folder).where(
             Folder.id == payload.parent_id,
-            Folder.owner_id == current_user.id
+            Folder.owner_id == current_user.id,
+            Folder.profile_id == payload.profile_id  # validate parent folder in the same profile
         )
 
         parent_folder = db.scalar(stmt)
@@ -49,6 +52,7 @@ def create_folder(
 
     folder = Folder(
         owner_id=current_user.id,
+        profile_id=payload.profile_id,  # store profile ID
         parent_id=payload.parent_id,
         name=payload.name
     )
@@ -64,9 +68,13 @@ def create_folder(
 @router.get("/", response_model=list[FolderResponse])
 def get_folders(
     db: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)]
+    current_user: Annotated[User, Depends(get_current_user)],
+    profile_id: uuid.UUID  # must provide profile to list folders
 ):
-    stmt = select(Folder).where(Folder.owner_id == current_user.id)
+    stmt = select(Folder).where(
+        Folder.owner_id == current_user.id,
+        Folder.profile_id == profile_id  # filter by profile
+    )
     folders = db.scalars(stmt).all()
     return folders
 
