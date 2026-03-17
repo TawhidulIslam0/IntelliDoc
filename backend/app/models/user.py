@@ -19,3 +19,4 @@ class User(Base):
     # Relationships
     folders: Mapped[list["Folder"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
     files: Mapped[list["File"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
+    profiles: Mapped[list["Profile"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
