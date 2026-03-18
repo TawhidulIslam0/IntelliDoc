@@ -9,11 +9,12 @@ from app.database import Base
 class File(Base):
     __tablename__ = "files"
     __table_args__ = (
-        UniqueConstraint("owner_id", "folder_id", "name", name="uq_file_name_per_folder"),
+        UniqueConstraint("owner_id", "profile_id", "folder_id", "name", name="uq_file_name_per_folder"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    profile_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"))
     folder_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("folders.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(255))
     s3_key: Mapped[str] = mapped_column(Text, unique=True)
