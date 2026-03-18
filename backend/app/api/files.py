@@ -8,14 +8,15 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import Annotated, Optional
+from botocore.config import Config
+from pydantic import BaseModel
+from dotenv import load_dotenv
 
 from app.database import get_db
 from app.api.users import get_current_user 
 from app.models.file import File 
 from app.models.user import User
-from botocore.config import Config
-from pydantic import BaseModel
-from dotenv import load_dotenv
+from app.models.profile import Profile
 
 # Load environment variables from .env
 load_dotenv()
@@ -33,19 +34,19 @@ s3 = boto3.client(
 BUCKET_NAME = os.getenv("AWS_BUCKET_NAME")
 PRESIGNED_URL_EXPIRY = 3600
 
+router = APIRouter(prefix="/files", tags=["files"])
+
 # Pydantic models
 class InitiateUploadRequest(BaseModel):
     name: str
     size_bytes: int
     mime_type: str
     folder_id: Optional[uuid.UUID] = None
-    profile_id: uuid.UUID 
+    profile_id: uuid.UUID  # required profile for upload
 
 class InitiateUploadResponse(BaseModel):
     file_id: uuid.UUID
     presigned_url: str
-
-router = APIRouter(prefix="/files", tags=["files"])
 
 # Create presigned URL for file upload
 @router.post("/initiate-upload", response_model=InitiateUploadResponse, status_code=status.HTTP_201_CREATED)
@@ -58,7 +59,7 @@ async def initiate_upload(
     existing_file = db.execute(
         select(File).where(
             File.owner_id == current_user.id,
-            File.profile_id == payload.profile_id,  # <-- NEW: check duplicates per profile
+            File.profile_id == payload.profile_id,
             File.folder_id == payload.folder_id,
             File.name == payload.name
         )
@@ -96,8 +97,8 @@ async def initiate_upload(
         size_bytes=payload.size_bytes,
         mime_type=payload.mime_type,
         status="pending",
-        created_at=now,
-        updated_at=now
+        created_at=now.isoformat(),
+        updated_at=now.isoformat()
     )
 
     db.add(new_file)
@@ -112,12 +113,21 @@ async def initiate_upload(
 async def list_files(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-    profile_id: uuid.UUID,  # must provide profile to list files
+    profile_id: Optional[uuid.UUID] = None,  # must provide profile to list files
     folder_id: Optional[uuid.UUID] = None
 ):
+    # Default to "Personal" profile if none provided
+    if not profile_id:
+        profile = db.scalar(
+            select(Profile).where(Profile.owner_id == current_user.id, Profile.name == "Personal")
+        )
+        if not profile:
+            raise HTTPException(status_code=404, detail="Personal profile not found")
+        profile_id = profile.id
+
     stmt = select(File).where(
         File.owner_id == current_user.id,
-        File.profile_id == profile_id 
+        File.profile_id == profile_id
     )
 
     if folder_id:
@@ -142,12 +152,27 @@ async def list_files(
 async def preview_file(
     file_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)]
+    current_user: Annotated[User, Depends(get_current_user)],
+    profile_id: Optional[uuid.UUID] = None
 ):
-    file = db.get(File, file_id)
-    if not file or file.owner_id != current_user.id:
+    # Default to Personal profile if profile_id not provided
+    if not profile_id:
+        profile = db.scalar(
+            select(Profile).where(Profile.owner_id == current_user.id, Profile.name == "Personal")
+        )
+        profile_id = profile.id if profile else None
+
+    file = db.scalar(
+        select(File).where(
+            File.id == file_id,
+            File.owner_id == current_user.id,
+            File.profile_id == profile_id
+        )
+    )
+    if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
+    # Generate presigned URL for preview
     try:
         presigned_url = s3.generate_presigned_url(
             "get_object",
@@ -164,12 +189,27 @@ async def preview_file(
 async def download_file(
     file_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)]
+    current_user: Annotated[User, Depends(get_current_user)],
+    profile_id: Optional[uuid.UUID] = None
 ):
-    file = db.get(File, file_id)
-    if not file or file.owner_id != current_user.id:
+    # Default to Personal profile if profile_id not provided
+    if not profile_id:
+        profile = db.scalar(
+            select(Profile).where(Profile.owner_id == current_user.id, Profile.name == "Personal")
+        )
+        profile_id = profile.id if profile else None
+
+    file = db.scalar(
+        select(File).where(
+            File.id == file_id,
+            File.owner_id == current_user.id,
+            File.profile_id == profile_id
+        )
+    )
+    if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
+    # Generate presigned URL for download
     try:
         presigned_url = s3.generate_presigned_url(
             "get_object",
