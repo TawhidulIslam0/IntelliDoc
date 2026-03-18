@@ -9,11 +9,12 @@ from app.database import Base
 class Folder(Base):
     __tablename__ = "folders"
     __table_args__ = (
-        UniqueConstraint("owner_id", "parent_id", "name", name="uq_folder_name_per_location"),
+        UniqueConstraint("owner_id", "profile_id", "parent_id", "name", name="uq_folder_name_per_location"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    profile_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"))
     parent_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("folders.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(255))
 
