@@ -1,10 +1,17 @@
 const API_URL = "http://localhost:8000/api";
 
-//Fetch folders for the current user
-export const getFolders = async () => {
+// Fetch folders for the current user
+export const getFolders = async (profileId) => {
   const token = localStorage.getItem("token");
 
-  const response = await fetch(`${API_URL}/folders/`, {
+  // Use profileId from localStorage if not provided
+  if (!profileId) profileId = localStorage.getItem("profileId");
+  if (!profileId) throw new Error("No profile selected");
+
+  const url = new URL(`${API_URL}/folders/`);
+  if (profileId) url.searchParams.append("profile_id", profileId);
+
+  const response = await fetch(url.toString(), {
     headers: { Authorization: `Bearer ${token}` },
   });
 
@@ -17,10 +24,13 @@ export const getFolders = async () => {
   return response.json();
 };
 
-
-//Create a new folder
-export const createFolder = async (name, parentId = null) => {
+// Create a new folder
+export const createFolder = async (name, profileId, parentId = null) => {
   const token = localStorage.getItem("token");
+
+  // Use profileId from localStorage if not provided
+  if (!profileId) profileId = localStorage.getItem("profileId");
+  if (!profileId) throw new Error("No profile selected");
 
   const response = await fetch(`${API_URL}/folders/`, {
     method: "POST",
@@ -29,7 +39,8 @@ export const createFolder = async (name, parentId = null) => {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      name: name,
+      name,
+      profile_id: profileId, // added profileId
       parent_id: parentId,
     }),
   });
@@ -43,15 +54,20 @@ export const createFolder = async (name, parentId = null) => {
   return response.json();
 };
 
-//Delete a folder
-export const deleteFolder = async (folderId) => {
+// Delete a folder
+export const deleteFolder = async (folderId, profileId) => {
   const token = localStorage.getItem("token");
 
-  const response = await fetch(`${API_URL}/folders/${folderId}`, {
+  // Use profileId from localStorage if not provided
+  if (!profileId) profileId = localStorage.getItem("profileId");
+  if (!profileId) throw new Error("No profile selected");
+
+  const url = new URL(`${API_URL}/folders/${folderId}`);
+  if (profileId) url.searchParams.append("profile_id", profileId);
+
+  const response = await fetch(url.toString(), {
     method: "DELETE",
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { Authorization: `Bearer ${token}` },
   });
 
   if (!response.ok) {
