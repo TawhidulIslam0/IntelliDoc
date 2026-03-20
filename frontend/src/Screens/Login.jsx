@@ -1,38 +1,66 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useContext } from "react";
 import { loginUser } from "../api/authService";
 import { useNavigate } from "react-router-dom";
 import "./LoginSignup.css";
 
 // Icons
-import user_icon from "../assets/person.png"; // fixed from email_icon
+import user_icon from "../assets/person.png";
 import password_icon from "../assets/password.png";
 import google_icon from "../assets/google_icon_logo.png"; 
 
-const Login = () => {
+// Import ProfileContext
+import { ProfileContext } from "../UI/ProfileContext";
 
+const Login = () => {
   // Local state for inputs and error messages
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState(""); 
 
   const navigate = useNavigate();
+  const { setCurrentProfile } = useContext(ProfileContext);
 
   // check if token exists and validate user session
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) return;
 
-    // Try to fetch current user, if valid, redirect to dashboard
     const validateToken = async () => {
       try {
         const res = await fetch("http://localhost:8000/api/users/me", {
           headers: { Authorization: `Bearer ${token}` },
         });
 
-        if (res.ok) {
-          navigate("/dashboard"); // user is already logged in
-        } else {
+        if (!res.ok) {
           localStorage.removeItem("token"); // invalid token, clear it
+          return;
+        }
+
+        // Token valid, fetch profiles
+        const profileRes = await fetch("http://localhost:8000/api/profiles/", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (!profileRes.ok) throw new Error("Failed to fetch profiles");
+
+        const profilesData = await profileRes.json();
+
+        // Check if a profile is already saved in localStorage
+        const savedProfileId = localStorage.getItem("currentProfileId");
+        let initialProfile;
+
+        if (savedProfileId) {
+          initialProfile = profilesData.find(p => p.id.toString() === savedProfileId);
+        }
+
+        // Fallback: pick Personal if exists
+        initialProfile = initialProfile || profilesData.find(p => p.name === "Personal") || profilesData[0];
+
+        if (initialProfile) {
+          setCurrentProfile(initialProfile);
+          navigate("/dashboard"); // existing user with profile goes to dashboard
+        } else {
+          navigate("/choose-profile"); // new user, no profile yet
         }
       } catch (err) {
         console.error(err);
@@ -41,12 +69,11 @@ const Login = () => {
     };
 
     validateToken();
-  }, [navigate]);
+  }, [navigate, setCurrentProfile]);
 
   // Handle form submission for login
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     setError(""); // clear previous errors
 
     try {
@@ -55,8 +82,30 @@ const Login = () => {
       // Save token in localStorage
       localStorage.setItem("token", data.access_token);
 
-      // Navigate to dashboard after successful login
-      navigate("/dashboard");
+      // After login, fetch profiles to check if user already has a profile
+      const profileRes = await fetch("http://localhost:8000/api/profiles/", {
+        headers: { Authorization: `Bearer ${data.access_token}` },
+      });
+
+      if (!profileRes.ok) throw new Error("Failed to fetch profiles");
+
+      const profilesData = await profileRes.json();
+
+      const savedProfileId = localStorage.getItem("currentProfileId");
+      let initialProfile;
+
+      if (savedProfileId) {
+        initialProfile = profilesData.find(p => p.id.toString() === savedProfileId);
+      }
+
+      initialProfile = initialProfile || profilesData.find(p => p.name === "Personal") || null;
+
+      if (initialProfile) {
+        setCurrentProfile(initialProfile);
+        navigate("/dashboard"); // existing user
+      } else {
+        navigate("/choose-profile"); // new user
+      }
     } catch (err) {
       setError(err.message || "An error occurred during login.");
     }
@@ -65,7 +114,6 @@ const Login = () => {
   // Placeholder function for Google login
   const handleGoogleLogin = () => {
     alert("Google login clicked!");
-    // implement OAuth logic later
   };
 
   return (
@@ -96,7 +144,7 @@ const Login = () => {
 
           {/* Username input */}
           <div className="input">
-            <img src={user_icon} alt="User" /> {/* fixed icon */}
+            <img src={user_icon} alt="User" />
             <input
               type="text"
               placeholder="Username"
