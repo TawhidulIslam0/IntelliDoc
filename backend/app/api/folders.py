@@ -1,15 +1,15 @@
+import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from typing import Annotated, Optional
-import uuid
+from pydantic import BaseModel, ConfigDict
 
 from app.database import get_db
 from app.api.users import get_current_user
 from app.models.folder import Folder
 from app.models.user import User
 from app.models.profile import Profile
-from pydantic import BaseModel, ConfigDict
 
 router = APIRouter(prefix="/folders", tags=["folders"])
 
@@ -34,6 +34,13 @@ def create_folder(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)]
 ):
+    # Ensure the profile belongs to the current user
+    profile = db.scalar(
+        select(Profile).where(Profile.id == payload.profile_id, Profile.owner_id == current_user.id)
+    )
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found or not owned by user")
+
     # Ensure parent folder belongs to the user and same profile
     if payload.parent_id:
         stmt = select(Folder).where(
@@ -64,15 +71,13 @@ def get_folders(
     current_user: Annotated[User, Depends(get_current_user)],
     profile_id: Optional[uuid.UUID] = None
 ):
-    # If no profile_id provided, default to "Personal"
+    # If no profile_id provided, default to default profile
     if not profile_id:
-        stmt_profile = select(Profile).where(
-            Profile.owner_id == current_user.id,
-            Profile.name == "Personal"
+        profile = db.scalar(
+            select(Profile).where(Profile.owner_id == current_user.id, Profile.is_default == True)
         )
-        profile = db.scalar(stmt_profile)
         if not profile:
-            raise HTTPException(status_code=404, detail="Personal profile not found")
+            raise HTTPException(status_code=404, detail="Default profile not found")
         profile_id = profile.id
 
     # Fetch folders for user & profile
@@ -90,13 +95,11 @@ def delete_folder(
     current_user: Annotated[User, Depends(get_current_user)],
     profile_id: Optional[uuid.UUID] = None
 ):
-    # Default to "Personal" profile if none provided
+    # Default to default profile if none provided
     if not profile_id:
-        stmt_profile = select(Profile).where(
-            Profile.owner_id == current_user.id,
-            Profile.name == "Personal"
+        profile = db.scalar(
+            select(Profile).where(Profile.owner_id == current_user.id, Profile.is_default == True)
         )
-        profile = db.scalar(stmt_profile)
         profile_id = profile.id if profile else None
 
     # Fetch folder safely
