@@ -55,6 +55,13 @@ async def initiate_upload(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)]
 ):
+    # Check that the profile belongs to the current user
+    profile = db.scalar(
+        select(Profile).where(Profile.id == payload.profile_id, Profile.owner_id == current_user.id)
+    )
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found or not owned by user")
+
     # Check for duplicate file name in the same folder
     existing_file = db.execute(
         select(File).where(
@@ -116,13 +123,13 @@ async def list_files(
     profile_id: Optional[uuid.UUID] = None,  # must provide profile to list files
     folder_id: Optional[uuid.UUID] = None
 ):
-    # Default to "Personal" profile if none provided
+    # Default to default profile if none provided
     if not profile_id:
         profile = db.scalar(
-            select(Profile).where(Profile.owner_id == current_user.id, Profile.name == "Personal")
+            select(Profile).where(Profile.owner_id == current_user.id, Profile.is_default == True)
         )
         if not profile:
-            raise HTTPException(status_code=404, detail="Personal profile not found")
+            raise HTTPException(status_code=404, detail="Default profile not found")
         profile_id = profile.id
 
     stmt = select(File).where(
@@ -155,10 +162,10 @@ async def preview_file(
     current_user: Annotated[User, Depends(get_current_user)],
     profile_id: Optional[uuid.UUID] = None
 ):
-    # Default to Personal profile if profile_id not provided
+    # Default to default profile if profile_id not provided
     if not profile_id:
         profile = db.scalar(
-            select(Profile).where(Profile.owner_id == current_user.id, Profile.name == "Personal")
+            select(Profile).where(Profile.owner_id == current_user.id, Profile.is_default == True)
         )
         profile_id = profile.id if profile else None
 
@@ -192,10 +199,10 @@ async def download_file(
     current_user: Annotated[User, Depends(get_current_user)],
     profile_id: Optional[uuid.UUID] = None
 ):
-    # Default to Personal profile if profile_id not provided
+    # Default to default profile if profile_id not provided
     if not profile_id:
         profile = db.scalar(
-            select(Profile).where(Profile.owner_id == current_user.id, Profile.name == "Personal")
+            select(Profile).where(Profile.owner_id == current_user.id, Profile.is_default == True)
         )
         profile_id = profile.id if profile else None
 
