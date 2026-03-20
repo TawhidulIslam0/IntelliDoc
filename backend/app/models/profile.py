@@ -16,3 +16,6 @@ class Profile(Base):
     owner: Mapped["User"] = relationship(back_populates="profiles")
     folders: Mapped[list["Folder"]] = relationship(back_populates="profile", cascade="all, delete-orphan")
     files: Mapped[list["File"]] = relationship(back_populates="profile", cascade="all, delete-orphan")
+    
+    # mark default profile
+    is_default: Mapped[bool] = mapped_column(default=False)
