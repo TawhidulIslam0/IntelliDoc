@@ -1,10 +1,18 @@
 const API_URL = "http://localhost:8000/api";
 
-// Fetch list of files for the current use
-export const getFiles = async () => {
+// Fetch list of files for the current user
+export const getFiles = async (profileId, folderId = null) => {
   const token = localStorage.getItem("token");
 
-  const response = await fetch(`${API_URL}/files/`, {
+  // Use profileId from localStorage if not provided
+  if (!profileId) profileId = localStorage.getItem("profileId");
+  if (!profileId) throw new Error("No profile selected");
+
+  const params = new URLSearchParams();
+  if (profileId) params.append("profile_id", profileId);
+  if (folderId) params.append("folder_id", folderId);
+
+  const response = await fetch(`${API_URL}/files/?${params.toString()}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
 
@@ -25,9 +33,13 @@ const validateFileType = (file) => {
 };
 
 // Upload file using presigned URL
-export const uploadFile = async (file, folderId = null) => {
+export const uploadFile = async (file, profileId, folderId = null) => {
   validateFileType(file);
   const token = localStorage.getItem("token");
+
+  // Use profileId from localStorage if not provided
+  if (!profileId) profileId = localStorage.getItem("profileId");
+  if (!profileId) throw new Error("No profile selected");
 
   // Request presigned URL from backend
   const initiateResp = await fetch(`${API_URL}/files/initiate-upload`, {
@@ -39,8 +51,9 @@ export const uploadFile = async (file, folderId = null) => {
     body: JSON.stringify({
       name: file.name,
       size_bytes: file.size,
-      mime_type: file.type, 
+      mime_type: file.type,
       folder_id: folderId,
+      profile_id: profileId, // added profileId
     }),
   });
 
@@ -55,7 +68,7 @@ export const uploadFile = async (file, folderId = null) => {
   // Upload file to S3 
   const s3Resp = await fetch(presigned_url, {
     method: "PUT",
-    body: file, // no Content-Type, no extra headers
+    body: file,
   });
 
   if (!s3Resp.ok) {
@@ -67,12 +80,18 @@ export const uploadFile = async (file, folderId = null) => {
   return { presigned_url };
 };
 
-
 // Preview URL for a file
-export const getPreviewUrl = async (fileId) => {
+export const getPreviewUrl = async (fileId, profileId) => {
   const token = localStorage.getItem("token");
 
-  const response = await fetch(`${API_URL}/files/${fileId}/preview`, {
+  // Use profileId from localStorage if not provided
+  if (!profileId) profileId = localStorage.getItem("profileId");
+  if (!profileId) throw new Error("No profile selected");
+
+  const url = new URL(`${API_URL}/files/${fileId}/preview`);
+  if (profileId) url.searchParams.append("profile_id", profileId);
+
+  const response = await fetch(url.toString(), {
     headers: { Authorization: `Bearer ${token}` },
   });
 
@@ -85,12 +104,18 @@ export const getPreviewUrl = async (fileId) => {
   return response.json();
 };
 
-
 // Download URL for a file
-export const getDownloadUrl = async (fileId) => {
+export const getDownloadUrl = async (fileId, profileId) => {
   const token = localStorage.getItem("token");
 
-  const response = await fetch(`${API_URL}/files/${fileId}/download`, {
+  // Use profileId from localStorage if not provided
+  if (!profileId) profileId = localStorage.getItem("profileId");
+  if (!profileId) throw new Error("No profile selected");
+
+  const url = new URL(`${API_URL}/files/${fileId}/download`);
+  if (profileId) url.searchParams.append("profile_id", profileId);
+
+  const response = await fetch(url.toString(), {
     headers: { Authorization: `Bearer ${token}` },
   });
 
