@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useContext, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { uploadFile, getPreviewUrl } from "../api/fileService";
 import { getFolders, createFolder } from "../api/folderService";
 import uploadIcon from "../assets/uploadbutton.png";
 import folderIcon from "../assets/folderbutton.png";
+import { ProfileContext } from "../UI/ProfileContext"; // import context
 
 const HomeScreen = ({ onCreateDoc }) => {
   const navigate = useNavigate();
@@ -15,7 +16,9 @@ const HomeScreen = ({ onCreateDoc }) => {
   const [currentFolderId, setCurrentFolderId] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
 
-  // Fetch user and initial data
+  const { currentProfile } = useContext(ProfileContext); // use the profile context
+
+  // Fetch user on mount
   useEffect(() => {
     const initialize = async () => {
       const token = localStorage.getItem("token");
@@ -32,9 +35,6 @@ const HomeScreen = ({ onCreateDoc }) => {
         if (!res.ok) throw new Error("Failed to fetch user");
         const data = await res.json();
         setUser(data);
-
-        await fetchFolders();
-        await fetchFiles();
       } catch (err) {
         console.error(err);
         localStorage.removeItem("token");
@@ -45,38 +45,52 @@ const HomeScreen = ({ onCreateDoc }) => {
     initialize();
   }, [navigate]);
 
-  // Fetch folders
-  const fetchFolders = async () => {
+  // Fetch folders for current profile
+  const fetchFolders = useCallback(async () => {
+    if (!currentProfile) return;
     try {
-      const data = await getFolders();
+      const data = await getFolders(currentProfile.id); // pass profile ID if needed
       setFolders(data);
     } catch (err) {
       console.error("Failed to fetch folders:", err);
     }
-  };
+  }, [currentProfile]);
 
-  // Fetch files
-  const fetchFiles = async (folderId = null) => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
+  // Fetch files for current folder and profile
+  const fetchFiles = useCallback(
+    async (folderId = null) => {
+      if (!currentProfile) return;
 
-    try {
-      const url = folderId
-        ? `http://localhost:8000/api/files/?folder_id=${folderId}`
-        : `http://localhost:8000/api/files/`;
+      const token = localStorage.getItem("token");
+      if (!token) return;
 
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      try {
+        const url = folderId
+          ? `http://localhost:8000/api/files/?folder_id=${folderId}&profile_id=${currentProfile.id}`
+          : `http://localhost:8000/api/files/?profile_id=${currentProfile.id}`;
 
-      if (res.ok) {
-        const data = await res.json();
-        setFetchedDocuments(data);
+        const res = await fetch(url, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          setFetchedDocuments(data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch files:", err);
       }
-    } catch (err) {
-      console.error("Failed to fetch files:", err);
-    }
-  };
+    },
+    [currentProfile]
+  );
+
+  // Fetch folders and files whenever currentProfile changes
+  useEffect(() => {
+    if (!currentProfile) return;
+
+    fetchFolders();
+    fetchFiles();
+  }, [currentProfile, fetchFolders, fetchFiles]);
 
   // Create blank document
   const handleNewDocument = () => {
