@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useContext } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 
 import DashboardNavbar from "./UI/DashboardNavbar";
@@ -10,10 +10,13 @@ import HomeScreen from "./Screens/Dashboard";
 
 import Login from "./Screens/Login";
 import Signup from "./Screens/Signup";
+import ChooseProfile from "./Screens/ChooseProfile"; // <-- import ChooseProfile
 import ProtectedRoute from "./auth/ProtectedRoute";
 
+import { ProfileContext } from "./UI/ProfileContext"; // use context
+
 export default function App() {
-  const [profile, setProfile] = useState("Personal");
+  const { currentProfile } = useContext(ProfileContext); // get profile from context
   const [documents, setDocuments] = useState([]);
   const [activeDoc, setActiveDoc] = useState(
     () => JSON.parse(sessionStorage.getItem("activeDoc")) || null
@@ -42,7 +45,6 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("documents", JSON.stringify(documents));
   }, [documents]);
-
 
   // Fetch current user if token exists
   useEffect(() => {
@@ -78,7 +80,7 @@ export default function App() {
       id: Date.now(),
       title: "Untitled Document",
       createdAt: new Date().toLocaleDateString(),
-      profile,
+      profile: currentProfile,
     };
     setDocuments((prev) => [newDoc, ...prev]);
     setActiveDoc(newDoc);
@@ -102,8 +104,13 @@ export default function App() {
 
   // Landing route decides where to go
   const Landing = () => {
-    if (currentUser) return <Navigate to="/dashboard" replace />;
-    return <Navigate to="/signup" replace />; // new users see signup first
+    if (!currentUser) return <Navigate to="/signup" replace />; // new users go to signup
+    // If user has profile, go to dashboard, otherwise choose profile
+    return currentProfile ? (
+      <Navigate to="/dashboard" replace />
+    ) : (
+      <Navigate to="/choose-profile" replace />
+    );
   };
 
   // Show loading until auth check completes
@@ -124,17 +131,23 @@ export default function App() {
         {/* SIGNUP */}
         <Route path="/signup" element={<Signup />} />
 
+        {/* CHOOSE PROFILE */}
+        <Route
+          path="/choose-profile"
+          element={
+            <ProtectedRoute>
+              <ChooseProfile />
+            </ProtectedRoute>
+          }
+        />
+
         {/* DASHBOARD - protected */}
         <Route
           path="/dashboard"
           element={
             <ProtectedRoute>
               <>
-                <DashboardNavbar
-                  profile={profile}
-                  setProfile={setProfile}
-                  user={currentUser}
-                />
+                <DashboardNavbar user={currentUser} />
                 <HomeScreen
                   documents={documents}
                   onCreateDoc={handleCreateDoc}
@@ -154,19 +167,16 @@ export default function App() {
               {activeDoc ? (
                 <>
                   <EditorNavbar
-                    profile={profile}
-                    setProfile={setProfile}
                     activeDoc={activeDoc}
                     onRenameDoc={handleRenameDoc}
                   />
                   <Toolbar />
                   <div style={{ display: "flex", flex: 1 }}>
                     <Sidebar />
-                    <Editor profile={profile} document={activeDoc} />
+                    <Editor profile={currentProfile} document={activeDoc} />
                   </div>
                 </>
               ) : (
-                // Redirect to dashboard if no activeDoc
                 <Navigate to="/dashboard" replace />
               )}
             </ProtectedRoute>
