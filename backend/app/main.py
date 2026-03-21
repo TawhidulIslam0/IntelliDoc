@@ -6,12 +6,15 @@ from app.models import user, folder, file
 from app.api.files import router as files_router
 from app.api.folders import router as folders_router
 from app.api.profile import router as profile_router
-    
+
+from app.api.google_auth import router as google_router
+
 app = FastAPI()
 app.include_router(users_router)
 app.include_router(files_router, prefix="/api")
 app.include_router(folders_router, prefix="/api")
 app.include_router(profile_router, prefix="/api")
+app.include_router(google_router) 
 
 app.add_middleware(
     CORSMiddleware,
