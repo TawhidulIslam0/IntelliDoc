@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 import React, { useEffect, useState, useContext, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { uploadFile, getPreviewUrl } from "../api/fileService";
@@ -16,7 +17,8 @@ const HomeScreen = ({ onCreateDoc }) => {
   const [currentFolderId, setCurrentFolderId] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
 
-  const { currentProfile } = useContext(ProfileContext); // use the profile context
+  // Extract loading state from ProfileContext to prevent premature rendering
+  const { currentProfile, loading: profilesLoading } = useContext(ProfileContext); 
 
   // Fetch user on mount
   useEffect(() => {
@@ -176,6 +178,15 @@ const HomeScreen = ({ onCreateDoc }) => {
     setCurrentFolderId(folder.id);
     fetchFiles(folder.id);
   };
+
+  // FIX: Loading Guard - prevents the dashboard from rendering blank before the context is ready
+  if (profilesLoading) {
+    return (
+      <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", height: "80vh", fontSize: 18, color: "#5f6368" }}>
+        Loading your workspace...
+      </div>
+    );
+  }
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
