@@ -1,7 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { useState, useEffect, createContext } from "react";
 
-// Create the context
 export const ProfileContext = createContext(null);
 
 export const ProfileProvider = ({ children }) => {
@@ -18,51 +17,41 @@ export const ProfileProvider = ({ children }) => {
       }
 
       try {
-        let res = await fetch("http://localhost:8000/api/profiles/", {
+        const res = await fetch("http://localhost:8000/api/profiles/", {
           headers: { Authorization: `Bearer ${token}` },
         });
 
         if (!res.ok) throw new Error("Failed to fetch profiles");
 
-        let data = await res.json();
+        const data = await res.json();
 
-        // If no profiles exist, create defaults
-        if (data.length === 0) {
-          const defaultProfiles = ["Personal", "School", "Work"];
-          const createdProfiles = [];
+        // Remove "Default" profile from the list
+        const cleanedData = data.filter((p) => p.name !== "Default");
 
-          for (const name of defaultProfiles) {
-            const createRes = await fetch("http://localhost:8000/api/profiles/", {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${token}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({ name }),
-            });
+        setProfiles(cleanedData);
 
-            if (!createRes.ok) {
-              console.error(`Failed to create profile: ${name}`);
-              continue;
-            }
+        const savedProfileId = localStorage.getItem("currentProfileId");
 
-            const createdProfile = await createRes.json();
-            createdProfiles.push(createdProfile);
-          }
+        let initialProfile = null;
 
-          data = createdProfiles;
+        //  restoring previously selected profile
+        if (savedProfileId) {
+          initialProfile = cleanedData.find(
+            (p) =>
+              p.id === savedProfileId ||
+              p.id === Number(savedProfileId)
+          );
         }
 
-        setProfiles(data);
+        //  Use backend default (is_default = true)
+        if (!initialProfile) {
+          initialProfile = cleanedData.find((p) => p.is_default);
+        }
 
-        // Check if a profile was saved in localStorage
-        const savedProfileId = localStorage.getItem("currentProfileId");
-        let initialProfile = savedProfileId
-          ? data.find((p) => p.id.toString() === savedProfileId)
-          : data.find((p) => p.name === "Personal");
-
-        // Fallback: first profile
-        initialProfile = initialProfile || data[0];
+        //  Fallback to first profile
+        if (!initialProfile) {
+          initialProfile = cleanedData[0] || null;
+        }
 
         setCurrentProfile(initialProfile);
       } catch (err) {
@@ -75,7 +64,7 @@ export const ProfileProvider = ({ children }) => {
     fetchProfiles();
   }, []);
 
-  // Save selected profile in localStorage whenever it changes
+  // Persist selected profile
   useEffect(() => {
     if (currentProfile) {
       localStorage.setItem("currentProfileId", currentProfile.id);
