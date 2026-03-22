@@ -5,7 +5,7 @@ export const getFiles = async (profileId, folderId = null) => {
   const token = localStorage.getItem("token");
 
   // Use profileId from localStorage if not provided
-  if (!profileId) profileId = localStorage.getItem("profileId");
+  if (!profileId) profileId = localStorage.getItem("currentProfileId"); 
   if (!profileId) throw new Error("No profile selected");
 
   const params = new URLSearchParams();
@@ -38,7 +38,7 @@ export const uploadFile = async (file, profileId, folderId = null) => {
   const token = localStorage.getItem("token");
 
   // Use profileId from localStorage if not provided
-  if (!profileId) profileId = localStorage.getItem("profileId");
+  if (!profileId) profileId = localStorage.getItem("currentProfileId");
   if (!profileId) throw new Error("No profile selected");
 
   // Request presigned URL from backend
@@ -53,7 +53,7 @@ export const uploadFile = async (file, profileId, folderId = null) => {
       size_bytes: file.size,
       mime_type: file.type,
       folder_id: folderId,
-      profile_id: profileId, // added profileId
+      profile_id: profileId,
     }),
   });
 
@@ -85,7 +85,7 @@ export const getPreviewUrl = async (fileId, profileId) => {
   const token = localStorage.getItem("token");
 
   // Use profileId from localStorage if not provided
-  if (!profileId) profileId = localStorage.getItem("profileId");
+  if (!profileId) profileId = localStorage.getItem("currentProfileId"); 
   if (!profileId) throw new Error("No profile selected");
 
   const url = new URL(`${API_URL}/files/${fileId}/preview`);
@@ -109,7 +109,7 @@ export const getDownloadUrl = async (fileId, profileId) => {
   const token = localStorage.getItem("token");
 
   // Use profileId from localStorage if not provided
-  if (!profileId) profileId = localStorage.getItem("profileId");
+  if (!profileId) profileId = localStorage.getItem("currentProfileId"); 
   if (!profileId) throw new Error("No profile selected");
 
   const url = new URL(`${API_URL}/files/${fileId}/download`);
