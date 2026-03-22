@@ -12,7 +12,6 @@ export default function Editor({ profile }) {
         padding: "24px",
       }}
     >
-      {/* White "paper" area */}
       <div
         style={{
           width: "816px",
@@ -29,7 +28,7 @@ export default function Editor({ profile }) {
         contentEditable
         suppressContentEditableWarning={true}
       >
-        Start typing your <strong>{profile}</strong> notes here...
+        Start typing your <strong>{profile?.name || "Personal"}</strong> notes here...
       </div>
     </main>
   );
