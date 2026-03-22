@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 import React, { useEffect, useState, useContext } from "react";
 import { loginUser } from "../api/authService";
 import { useNavigate } from "react-router-dom";
@@ -18,7 +19,9 @@ const Login = () => {
   const [error, setError] = useState(""); 
 
   const navigate = useNavigate();
-  useContext(ProfileContext); // consume context without destructuring unused vars
+  
+  //  Destructure refreshProfiles from the context
+  const { refreshProfiles } = useContext(ProfileContext); 
 
   // Check if token exists and validate user session
   useEffect(() => {
@@ -58,6 +61,11 @@ const Login = () => {
       // Save token in localStorage
       localStorage.setItem("token", data.access_token);
 
+      //  ProfileContext fetch profiles after login to ensure we have the latest profiles for the user
+      if (refreshProfiles) {
+        await refreshProfiles();
+      }
+
       // Navigate to dashboard after successful login
       navigate("/dashboard");
     } catch (err) {
@@ -65,9 +73,9 @@ const Login = () => {
     }
   };
 
+  // Placeholder function for Google login
   const handleGoogleLogin = () => {
-    window.location.href =
-      "http://localhost:8000/api/auth/google/login";
+    alert("Google login clicked!");
   };
 
   return (
