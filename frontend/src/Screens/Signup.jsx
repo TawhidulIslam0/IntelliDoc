@@ -44,10 +44,9 @@ const Signup = () => {
     }
   };
 
-  // placeholder function for Google signup
   const handleGoogleSignup = () => {
-    alert("Google signup clicked!");
-    // implement OAuth logic later
+    window.location.href =
+      "http://localhost:8000/api/auth/google/login";
   };
 
   return (

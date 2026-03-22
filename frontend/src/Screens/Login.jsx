@@ -65,9 +65,9 @@ const Login = () => {
     }
   };
 
-  // Placeholder function for Google login
   const handleGoogleLogin = () => {
-    alert("Google login clicked!");
+    window.location.href =
+      "http://localhost:8000/api/auth/google/login";
   };
 
   return (

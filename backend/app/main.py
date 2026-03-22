@@ -8,6 +8,12 @@ from app.api.folders import router as folders_router
 from app.api.profile import router as profile_router
 
 from app.api.google_auth import router as google_router
+from starlette.middleware.sessions import SessionMiddleware
+from dotenv import load_dotenv
+import os
+
+# Load .env
+load_dotenv()
 
 app = FastAPI()
 app.include_router(users_router)
@@ -24,7 +30,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
+# For Google OAuth
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.getenv("SECRET_KEY", "dev-secret-key")
+)
 
 # Create tables automatically
 Base.metadata.create_all(bind=engine)

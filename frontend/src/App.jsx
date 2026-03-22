@@ -11,6 +11,8 @@ import HomeScreen from "./Screens/Dashboard";
 import Login from "./Screens/Login";
 import Signup from "./Screens/Signup";
 
+import OAuthSuccess from "./Screens/OAuthSuccess";
+
 import ProtectedRoute from "./auth/ProtectedRoute";
 
 import { ProfileContext } from "./UI/ProfileContext";
@@ -120,6 +122,11 @@ export default function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
+
+        <Route
+          path="/oauth-success"
+          element={<OAuthSuccess />}
+        />
 
         <Route
           path="/dashboard"

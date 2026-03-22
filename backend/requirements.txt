@@ -8,3 +8,4 @@ PyJWT
 pwdlib[argon2]
 boto3
 authlib
+itsdangerous

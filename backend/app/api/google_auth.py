@@ -14,7 +14,6 @@ from app.api.auth import create_access_token
 router = APIRouter(prefix="/api/auth", tags=["Google Auth"])
  
 oauth = OAuth()
- 
 oauth.register(
     name="google",
     client_id=os.getenv("GOOGLE_CLIENT_ID"),
@@ -53,31 +52,45 @@ async def google_callback(
     db: Session = Depends(get_db)
 ):
     token = await oauth.google.authorize_access_token(request)
- 
-    user_info = token["userinfo"]
+
+    # DEBUG (temporary — remove later)
+    print("TOKEN:", token)
+
+    # Try ID token first
+    user_info = None
+
+    if "id_token" in token:
+        user_info = await oauth.google.parse_id_token(request, token)
+    else:
+        # Fallback — fetch user info manually
+        resp = await oauth.google.get("userinfo", token=token)
+        user_info = resp.json()
+
     email = user_info["email"]
-    name = user_info.get("name", email.split("@")[0])  # Fallback if name is missing
- 
+    name = user_info.get("name", email.split("@")[0])
+
     # Find existing user
     result = db.execute(select(User).where(User.email == email))
     user = result.scalars().first()
- 
+
     # Create new user if needed
     if not user:
         username = generate_unique_username(name, db)
- 
+
         user = User(
             id=uuid.uuid4(),
             username=username,
             email=email,
             password_hash=None
         )
- 
+
         db.add(user)
         db.commit()
         db.refresh(user)
- 
+
     # Create JWT token
     access_token = create_access_token(data={"sub": str(user.id)})
- 
-    return RedirectResponse(url=f"{FRONTEND_URL}/oauth-success?token={access_token}")
+
+    return RedirectResponse(
+        url=f"{FRONTEND_URL}/oauth-success?token={access_token}"
+    )
