@@ -10,6 +10,7 @@ from datetime import timedelta
 
 from app.api.auth import ACCESS_TOKEN_EXPIRE_MINUTES, ALGORITHM, SECRET_KEY, create_access_token, verify_password, hash_password
 from app.models.user import User
+from app.models.profile import Profile
 from app.database import get_db
 from pydantic import BaseModel, ConfigDict, Field, EmailStr
 
@@ -86,6 +87,18 @@ def create_user(user: UserCreate, db: Annotated[Session, Depends(get_db)]):
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+
+    #  Add default profiles: Personal (default), School, Work for  all users
+    default_profiles = ["Personal", "School", "Work"]
+    for i, name in enumerate(default_profiles):
+        profile = Profile(
+            name=name,
+            owner_id=new_user.id,
+            is_default=(i == 0)  # mark first profile (Personal) as default
+        )
+        db.add(profile)
+    db.commit()
+
     return new_user
 
 # Endpoint for user login that validates credentials and returns a JWT access token
