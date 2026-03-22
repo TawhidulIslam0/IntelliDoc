@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { useState, useEffect, createContext } from "react";
+import React, { useState, useEffect, createContext, useCallback } from "react";
 
 export const ProfileContext = createContext(null);
 
@@ -8,61 +8,65 @@ export const ProfileProvider = ({ children }) => {
   const [currentProfile, setCurrentProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchProfiles = async () => {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        setLoading(false);
-        return;
+  // Wrapped the fetch logic in useCallback so it can be called manually after login
+  const fetchProfiles = useCallback(async () => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
+    //  Ensure loading is true while fetching profiles
+    setLoading(true);
+
+    try {
+      const res = await fetch("http://localhost:8000/api/profiles/", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!res.ok) throw new Error("Failed to fetch profiles");
+
+      const data = await res.json();
+
+      // Remove "Default" profile from the list
+      const cleanedData = data.filter((p) => p.name !== "Default");
+
+      setProfiles(cleanedData);
+
+      const savedProfileId = localStorage.getItem("currentProfileId");
+
+      let initialProfile = null;
+
+      // restoring previously selected profile
+      if (savedProfileId) {
+        initialProfile = cleanedData.find(
+          (p) =>
+            p.id === savedProfileId ||
+            p.id === Number(savedProfileId)
+        );
       }
 
-      try {
-        const res = await fetch("http://localhost:8000/api/profiles/", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (!res.ok) throw new Error("Failed to fetch profiles");
-
-        const data = await res.json();
-
-        // Remove "Default" profile from the list
-        const cleanedData = data.filter((p) => p.name !== "Default");
-
-        setProfiles(cleanedData);
-
-        const savedProfileId = localStorage.getItem("currentProfileId");
-
-        let initialProfile = null;
-
-        //  restoring previously selected profile
-        if (savedProfileId) {
-          initialProfile = cleanedData.find(
-            (p) =>
-              p.id === savedProfileId ||
-              p.id === Number(savedProfileId)
-          );
-        }
-
-        //  Use backend default (is_default = true)
-        if (!initialProfile) {
-          initialProfile = cleanedData.find((p) => p.is_default);
-        }
-
-        //  Fallback to first profile
-        if (!initialProfile) {
-          initialProfile = cleanedData[0] || null;
-        }
-
-        setCurrentProfile(initialProfile);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
+      // Use backend default (is_default = true)
+      if (!initialProfile) {
+        initialProfile = cleanedData.find((p) => p.is_default);
       }
-    };
 
-    fetchProfiles();
+      // Fallback to first profile
+      if (!initialProfile) {
+        initialProfile = cleanedData[0] || null;
+      }
+
+      setCurrentProfile(initialProfile);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchProfiles();
+  }, [fetchProfiles]);
 
   // Persist selected profile
   useEffect(() => {
@@ -73,7 +77,8 @@ export const ProfileProvider = ({ children }) => {
 
   return (
     <ProfileContext.Provider
-      value={{ profiles, currentProfile, setCurrentProfile, loading }}
+      //  refreshProfiles to the context value so Login.js can trigger it
+      value={{ profiles, currentProfile, setCurrentProfile, loading, refreshProfiles: fetchProfiles }}
     >
       {children}
     </ProfileContext.Provider>
