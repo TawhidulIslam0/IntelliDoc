@@ -5,7 +5,7 @@ export const getFolders = async (profileId) => {
   const token = localStorage.getItem("token");
 
   // Use profileId from localStorage if not provided
-  if (!profileId) profileId = localStorage.getItem("profileId");
+  if (!profileId) profileId = localStorage.getItem("currentProfileId"); 
   if (!profileId) throw new Error("No profile selected");
 
   const url = new URL(`${API_URL}/folders/`);
@@ -29,7 +29,7 @@ export const createFolder = async (name, profileId, parentId = null) => {
   const token = localStorage.getItem("token");
 
   // Use profileId from localStorage if not provided
-  if (!profileId) profileId = localStorage.getItem("profileId");
+  if (!profileId) profileId = localStorage.getItem("currentProfileId");
   if (!profileId) throw new Error("No profile selected");
 
   const response = await fetch(`${API_URL}/folders/`, {
@@ -40,7 +40,7 @@ export const createFolder = async (name, profileId, parentId = null) => {
     },
     body: JSON.stringify({
       name,
-      profile_id: profileId, // added profileId
+      profile_id: profileId,
       parent_id: parentId,
     }),
   });
@@ -59,7 +59,7 @@ export const deleteFolder = async (folderId, profileId) => {
   const token = localStorage.getItem("token");
 
   // Use profileId from localStorage if not provided
-  if (!profileId) profileId = localStorage.getItem("profileId");
+  if (!profileId) profileId = localStorage.getItem("currentProfileId"); 
   if (!profileId) throw new Error("No profile selected");
 
   const url = new URL(`${API_URL}/folders/${folderId}`);
