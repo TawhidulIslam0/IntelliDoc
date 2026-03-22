@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from "react";
+import React, { useEffect, useState, useContext } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 
 import DashboardNavbar from "./UI/DashboardNavbar";
@@ -10,43 +10,36 @@ import HomeScreen from "./Screens/Dashboard";
 
 import Login from "./Screens/Login";
 import Signup from "./Screens/Signup";
-import ChooseProfile from "./Screens/ChooseProfile"; // <-- import ChooseProfile
+
 import ProtectedRoute from "./auth/ProtectedRoute";
 
-import { ProfileContext } from "./UI/ProfileContext"; // use context
+import { ProfileContext } from "./UI/ProfileContext";
 
 export default function App() {
-  const { currentProfile } = useContext(ProfileContext); // get profile from context
-  const [documents, setDocuments] = useState([]);
-  const [activeDoc, setActiveDoc] = useState(
-    () => JSON.parse(sessionStorage.getItem("activeDoc")) || null
-  );
+  const { currentProfile, loading: profileLoading } = useContext(ProfileContext);
+
+  const [documents, setDocuments] = useState(() => {
+    return JSON.parse(localStorage.getItem("documents")) || [];
+  });
+  const [activeDoc, setActiveDoc] = useState(() => {
+    return JSON.parse(sessionStorage.getItem("activeDoc")) || null;
+  });
   const [currentUser, setCurrentUser] = useState(null);
-  const [loading, setLoading] = useState(true); // loading while checking auth
+  const [loading, setLoading] = useState(true);
 
   const navigate = useNavigate();
 
-  // Persist active document in sessionStorage
-  useEffect(() => {
-    if (activeDoc) {
-      sessionStorage.setItem("activeDoc", JSON.stringify(activeDoc));
-    } else {
-      sessionStorage.removeItem("activeDoc");
-    }
-  }, [activeDoc]);
-
-  // Load documents from localStorage on mount
-  useEffect(() => {
-    const storedDocs = JSON.parse(localStorage.getItem("documents"));
-    if (storedDocs) setDocuments(storedDocs);
-  }, []);
-
-  // Save documents to localStorage whenever they change
+  // Persist documents and activeDoc
   useEffect(() => {
     localStorage.setItem("documents", JSON.stringify(documents));
   }, [documents]);
 
-  // Fetch current user if token exists
+  useEffect(() => {
+    if (activeDoc) sessionStorage.setItem("activeDoc", JSON.stringify(activeDoc));
+    else sessionStorage.removeItem("activeDoc");
+  }, [activeDoc]);
+
+  // Fetch current user
   useEffect(() => {
     const fetchCurrentUser = async () => {
       const token = localStorage.getItem("token");
@@ -74,22 +67,31 @@ export default function App() {
     fetchCurrentUser();
   }, [navigate]);
 
-  // Document handlers
+  // Reset activeDoc if profile switches
+  useEffect(() => {
+    if (activeDoc && activeDoc.profileId !== currentProfile?.id) {
+      setActiveDoc(null);
+    }
+  }, [currentProfile, activeDoc]);
+
+  // Create a new document for the current profile
   const handleCreateDoc = () => {
+    if (!currentProfile) return;
     const newDoc = {
       id: Date.now(),
       title: "Untitled Document",
       createdAt: new Date().toLocaleDateString(),
-      profile: currentProfile,
+      profileId: currentProfile.id,
+      profileName: currentProfile.name,
     };
     setDocuments((prev) => [newDoc, ...prev]);
     setActiveDoc(newDoc);
-    navigate("/editor"); // redirect to editor immediately
+    navigate("/editor");
   };
 
   const handleOpenDoc = (doc) => {
     setActiveDoc(doc);
-    navigate("/editor"); // redirect to editor when opening
+    navigate("/editor");
   };
 
   const handleRenameDoc = (newTitle) => {
@@ -102,46 +104,23 @@ export default function App() {
     setActiveDoc((prev) => (prev ? { ...prev, title: newTitle } : prev));
   };
 
-  // Landing route decides where to go
+  // Landing route
   const Landing = () => {
-    if (!currentUser) return <Navigate to="/signup" replace />; // new users go to signup
-    // If user has profile, go to dashboard, otherwise choose profile
-    return currentProfile ? (
-      <Navigate to="/dashboard" replace />
-    ) : (
-      <Navigate to="/choose-profile" replace />
-    );
+    if (!currentUser) return <Navigate to="/login" replace />;
+    return <Navigate to="/dashboard" replace />;
   };
 
-  // Show loading until auth check completes
-  if (loading) {
+  if (loading || profileLoading) {
     return <div style={{ padding: 40 }}>Loading...</div>;
   }
 
-  // App Routes
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
       <Routes>
-        {/* Root route */}
         <Route path="/" element={<Landing />} />
-
-        {/* LOGIN */}
         <Route path="/login" element={<Login />} />
-
-        {/* SIGNUP */}
         <Route path="/signup" element={<Signup />} />
 
-        {/* CHOOSE PROFILE */}
-        <Route
-          path="/choose-profile"
-          element={
-            <ProtectedRoute>
-              <ChooseProfile />
-            </ProtectedRoute>
-          }
-        />
-
-        {/* DASHBOARD - protected */}
         <Route
           path="/dashboard"
           element={
@@ -149,7 +128,9 @@ export default function App() {
               <>
                 <DashboardNavbar user={currentUser} />
                 <HomeScreen
-                  documents={documents}
+                  documents={documents.filter(
+                    (doc) => doc.profileId === currentProfile?.id
+                  )}
                   onCreateDoc={handleCreateDoc}
                   onOpenDoc={handleOpenDoc}
                   user={currentUser}
@@ -159,17 +140,13 @@ export default function App() {
           }
         />
 
-        {/* EDITOR - protected */}
         <Route
           path="/editor"
           element={
             <ProtectedRoute>
-              {activeDoc ? (
+              {activeDoc && currentProfile ? (
                 <>
-                  <EditorNavbar
-                    activeDoc={activeDoc}
-                    onRenameDoc={handleRenameDoc}
-                  />
+                  <EditorNavbar activeDoc={activeDoc} onRenameDoc={handleRenameDoc} />
                   <Toolbar />
                   <div style={{ display: "flex", flex: 1 }}>
                     <Sidebar />
