@@ -18,9 +18,9 @@ const Login = () => {
   const [error, setError] = useState(""); 
 
   const navigate = useNavigate();
-  const { setCurrentProfile } = useContext(ProfileContext);
+  useContext(ProfileContext); // consume context without destructuring unused vars
 
-  // check if token exists and validate user session
+  // Check if token exists and validate user session
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) return;
@@ -36,32 +36,8 @@ const Login = () => {
           return;
         }
 
-        // Token valid, fetch profiles
-        const profileRes = await fetch("http://localhost:8000/api/profiles/", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (!profileRes.ok) throw new Error("Failed to fetch profiles");
-
-        const profilesData = await profileRes.json();
-
-        // Check if a profile is already saved in localStorage
-        const savedProfileId = localStorage.getItem("currentProfileId");
-        let initialProfile;
-
-        if (savedProfileId) {
-          initialProfile = profilesData.find(p => p.id.toString() === savedProfileId);
-        }
-
-        // Fallback: pick Personal if exists
-        initialProfile = initialProfile || profilesData.find(p => p.name === "Personal") || profilesData[0];
-
-        if (initialProfile) {
-          setCurrentProfile(initialProfile);
-          navigate("/dashboard"); // existing user with profile goes to dashboard
-        } else {
-          navigate("/choose-profile"); // new user, no profile yet
-        }
+        // Token valid, navigate to dashboard
+        navigate("/dashboard");
       } catch (err) {
         console.error(err);
         localStorage.removeItem("token");
@@ -69,7 +45,7 @@ const Login = () => {
     };
 
     validateToken();
-  }, [navigate, setCurrentProfile]);
+  }, [navigate]);
 
   // Handle form submission for login
   const handleSubmit = async (e) => {
@@ -82,30 +58,8 @@ const Login = () => {
       // Save token in localStorage
       localStorage.setItem("token", data.access_token);
 
-      // After login, fetch profiles to check if user already has a profile
-      const profileRes = await fetch("http://localhost:8000/api/profiles/", {
-        headers: { Authorization: `Bearer ${data.access_token}` },
-      });
-
-      if (!profileRes.ok) throw new Error("Failed to fetch profiles");
-
-      const profilesData = await profileRes.json();
-
-      const savedProfileId = localStorage.getItem("currentProfileId");
-      let initialProfile;
-
-      if (savedProfileId) {
-        initialProfile = profilesData.find(p => p.id.toString() === savedProfileId);
-      }
-
-      initialProfile = initialProfile || profilesData.find(p => p.name === "Personal") || null;
-
-      if (initialProfile) {
-        setCurrentProfile(initialProfile);
-        navigate("/dashboard"); // existing user
-      } else {
-        navigate("/choose-profile"); // new user
-      }
+      // Navigate to dashboard after successful login
+      navigate("/dashboard");
     } catch (err) {
       setError(err.message || "An error occurred during login.");
     }
