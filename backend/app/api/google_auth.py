@@ -9,6 +9,7 @@ from sqlalchemy import select
 
 from app.database import get_db
 from app.models.user import User
+from app.models.profile import Profile
 from app.api.auth import create_access_token
 
 router = APIRouter(prefix="/api/auth", tags=["Google Auth"])
@@ -38,7 +39,7 @@ def generate_unique_username(name: str, db: Session) -> str:
     return username
 
 
-# Step 1: Redirect to Google
+# Redirect to Google
 @router.get("/google/login")
 async def google_login(request: Request):
     redirect_uri = request.url_for("google_callback")
@@ -73,17 +74,25 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         # Create user if not exists
         if not user:
             username = generate_unique_username(name, db)
-
             user = User(
                 id=uuid.uuid4(),
                 username=username,
                 email=email,
                 password_hash=None
             )
-
             db.add(user)
             db.commit()
             db.refresh(user)
+
+        # Create default profiles if user has none (handles existing users too)
+        existing_profiles = db.execute(
+            select(Profile).where(Profile.owner_id == user.id)
+        ).scalars().all()
+
+        if not existing_profiles:
+            for i, profile_name in enumerate(["Personal", "School", "Work"]):
+                db.add(Profile(name=profile_name, owner_id=user.id, is_default=(i == 0)))
+            db.commit()
 
         # Create JWT
         access_token = create_access_token(data={"sub": str(user.id)})

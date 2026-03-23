@@ -1,28 +1,18 @@
-from fastapi import FastAPI
-from app.database import engine, Base
-from app.api.users import router as users_router
-from fastapi.middleware.cors import CORSMiddleware
-from app.models import user, folder, file
-from app.api.files import router as files_router
-from app.api.folders import router as folders_router
-from app.api.profile import router as profile_router
-
-from app.api.google_auth import router as google_router
-from starlette.middleware.sessions import SessionMiddleware
-
 from dotenv import load_dotenv
-# Load .env
 load_dotenv()
 
 import os
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
+
+from app.api.users import router as users_router
+from app.api.files import router as files_router
+from app.api.folders import router as folders_router
+from app.api.profile import router as profile_router
+from app.api.google_auth import router as google_router
 
 app = FastAPI()
-
-# For Google OAuth
-app.add_middleware(
-    SessionMiddleware,
-    secret_key=os.getenv("SECRET_KEY", "dev-secret-key")
-)
 
 app.include_router(users_router)
 app.include_router(files_router, prefix="/api")
@@ -36,6 +26,12 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# For Google OAuth
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.getenv("SECRET_KEY", "dev-secret-key")
 )
 
 # Create tables automatically
