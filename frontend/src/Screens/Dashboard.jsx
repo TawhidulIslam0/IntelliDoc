@@ -1,13 +1,12 @@
-/* eslint-disable no-unused-vars */
 import React, { useEffect, useState, useContext, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { uploadFile, getPreviewUrl } from "../api/fileService";
 import { getFolders, createFolder } from "../api/folderService";
 import uploadIcon from "../assets/uploadbutton.png";
 import folderIcon from "../assets/folderbutton.png";
-import { ProfileContext } from "../UI/ProfileContext"; // import context
+import { ProfileContext } from "../UI/ProfileContext"; 
 
-const HomeScreen = ({ onCreateDoc }) => {
+const DashBoard = ({ onCreateDoc }) => {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [file, setFile] = useState(null);
@@ -179,7 +178,7 @@ const HomeScreen = ({ onCreateDoc }) => {
     fetchFiles(folder.id);
   };
 
-  // FIX: Loading Guard - prevents the dashboard from rendering blank before the context is ready
+  // prevents the dashboard from rendering blank before the context is ready
   if (profilesLoading) {
     return (
       <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", height: "80vh", fontSize: 18, color: "#5f6368" }}>
@@ -441,4 +440,4 @@ const HomeScreen = ({ onCreateDoc }) => {
   );
 };
 
-export default HomeScreen;
+export default DashBoard;
