@@ -1,9 +1,9 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 
+import logo from "../assets/file_icon_logo.png";
+
 export default function EditorNavbar({
-  profile,
-  setProfile,
   activeDoc,
   onRenameDoc,
 }) {
@@ -17,40 +17,39 @@ export default function EditorNavbar({
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        padding: "0 24px",
+        padding: "0 20px",
         borderBottom: "1px solid #E5E7EB",
-        boxShadow: "0 2px 4px rgba(0,0,0,0.05)",
       }}
     >
       {/* LEFT SECTION */}
-      <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-        {/* Back Button */}
-        <button
+      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+        {/*  Clickable Logo (acts like "back to dashboard") */}
+        <div
           onClick={() => navigate("/")}
           style={{
-            border: "none",
-            background: "transparent",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
             cursor: "pointer",
-            fontWeight: "500",
-            color: "#2563EB",
-            fontSize: "14px",
           }}
         >
-          ← Dashboard
-        </button>
+          <img
+            src={logo}
+            alt="logo"
+            style={{ width: "28px", height: "28px" }}
+          />
+          <span
+            style={{
+              fontSize: "18px",
+              fontWeight: "500",
+              color: "#5F6368", 
+            }}
+          >
 
-        {/* App Name */}
-        <div
-          style={{
-            fontSize: "20px",
-            fontWeight: "700",
-            color: "#2563EB",
-          }}
-        >
-          IntelliDoc
+          </span>
         </div>
 
-        {/* Editable Document Title */}
+        {/* Document Title */}
         {activeDoc && (
           <input
             value={activeDoc.title}
@@ -66,10 +65,11 @@ export default function EditorNavbar({
               outline: "none",
               transition: "all 0.2s ease",
               cursor: "text",
+              marginLeft: "10px",
             }}
             onFocus={(e) => {
-              e.target.style.backgroundColor = "#F3F4F6";
-              e.target.style.border = "1px solid #D1D5DB";
+              e.target.style.backgroundColor = "#F1F3F4";
+              e.target.style.border = "1px solid #DADCE0";
             }}
             onBlur={(e) => {
               e.target.style.backgroundColor = "transparent";
@@ -77,7 +77,7 @@ export default function EditorNavbar({
             }}
             onMouseEnter={(e) => {
               if (document.activeElement !== e.target) {
-                e.target.style.backgroundColor = "#F9FAFB";
+                e.target.style.backgroundColor = "#F8F9FA";
               }
             }}
             onMouseLeave={(e) => {
@@ -89,30 +89,8 @@ export default function EditorNavbar({
         )}
       </div>
 
-      {/* PROFILE SWITCH */}
-      <div style={{ display: "flex", gap: "10px" }}>
-        {["Personal", "School", "Work"].map((p) => {
-          const isActive = p === profile;
-          return (
-            <button
-              key={p}
-              onClick={() => setProfile(p)}
-              style={{
-                padding: "6px 18px",
-                backgroundColor: isActive ? "#E0E7FF" : "transparent",
-                color: isActive ? "#1E40AF" : "#374151",
-                border: "none",
-                borderRadius: "999px",
-                cursor: "pointer",
-                fontWeight: "500",
-                transition: "all 0.2s ease",
-              }}
-            >
-              {p}
-            </button>
-          );
-        })}
-      </div>
+      {/* RIGHT SECTION (empty for now)*/}
+      <div />
     </header>
   );
 }
