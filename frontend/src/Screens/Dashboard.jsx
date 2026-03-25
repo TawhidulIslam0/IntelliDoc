@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useContext, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { uploadFile, getPreviewUrl } from "../api/fileService";
+import { uploadFile, getPreviewUrl, deleteFile } from "../api/fileService"; 
 import { getFolders, createFolder } from "../api/folderService";
 import uploadIcon from "../assets/uploadbutton.png";
 import folderIcon from "../assets/folderbutton.png";
+import deleteFileIcon from "../assets/deletefilebutton.png"; 
 import { ProfileContext } from "../UI/ProfileContext"; 
 
 const DashBoard = ({ onCreateDoc }) => {
@@ -107,6 +108,23 @@ const DashBoard = ({ onCreateDoc }) => {
     } catch (err) {
       console.error(err);
       alert("Failed to preview file");
+    }
+  };
+
+  // Delete file handler
+  const handleDeleteFile = async (fileId) => {
+    if (!window.confirm("Are you sure you want to delete this file?")) return;
+
+    try {
+      await deleteFile(fileId);
+
+      //  remove file from UI 
+      setFetchedDocuments((prev) =>
+        prev.filter((file) => file.id !== fileId)
+      );
+    } catch (err) {
+      console.error(err);
+      alert("Failed to delete file");
     }
   };
 
@@ -297,39 +315,59 @@ const DashBoard = ({ onCreateDoc }) => {
               {fetchedDocuments.map((doc) => (
                 <div
                   key={doc.id}
-                  onClick={() => handleOpenExistingDoc(doc)}
-                  style={{ width: 150, cursor: "pointer" }}
+                  style={{ width: 150, cursor: "pointer", position: "relative" }} // NEW
                 >
-                  <div
-                    style={{
-                      height: 190,
-                      border: "1px solid #dadce0",
-                      borderRadius: 4,
-                      backgroundColor: "white",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
+                  {/*  Delete button */}
+                  <img
+                    src={deleteFileIcon}
+                    alt="Delete"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteFile(doc.id);
                     }}
-                  >
-                    <span style={{ fontSize: 16, fontWeight: 600 }}>
-                      {doc.mime_type === "application/pdf" ? "PDF" : "TXT"}
-                    </span>
-                  </div>
+                    style={{
+                      position: "absolute",
+                      top: 5,
+                      right: 5,
+                      width: 20,
+                      height: 20,
+                      cursor: "pointer",
+                      zIndex: 10,
+                    }}
+                  />
 
-                  <div style={{ padding: "10px 0" }}>
+                  <div onClick={() => handleOpenExistingDoc(doc)}>
                     <div
                       style={{
-                        fontWeight: 500,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
+                        height: 190,
+                        border: "1px solid #dadce0",
+                        borderRadius: 4,
+                        backgroundColor: "white",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
                       }}
                     >
-                      {doc.name}
+                      <span style={{ fontSize: 16, fontWeight: 600 }}>
+                        {doc.mime_type === "application/pdf" ? "PDF" : "TXT"}
+                      </span>
                     </div>
 
-                    <div style={{ fontSize: 12, color: "#5f6368" }}>
-                      {(doc.size_bytes / 1024).toFixed(1)} KB
+                    <div style={{ padding: "10px 0" }}>
+                      <div
+                        style={{
+                          fontWeight: 500,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {doc.name}
+                      </div>
+
+                      <div style={{ fontSize: 12, color: "#5f6368" }}>
+                        {(doc.size_bytes / 1024).toFixed(1)} KB
+                      </div>
                     </div>
                   </div>
                 </div>
