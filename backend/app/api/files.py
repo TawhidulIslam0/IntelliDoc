@@ -231,3 +231,45 @@ async def download_file(
         raise HTTPException(status_code=500, detail="Failed to generate download URL")
 
     return {"url": presigned_url}
+
+# // Delete file remove from S3 and the database
+@router.delete("/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_file(
+    file_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    profile_id: Optional[uuid.UUID] = None
+):
+    # Default to default profile if profile_id not provided
+    if not profile_id:
+        profile = db.scalar(
+            select(Profile).where(
+                Profile.owner_id == current_user.id,
+                Profile.is_default == True
+            )
+        )
+        profile_id = profile.id if profile else None
+
+    # Find file
+    file = db.scalar(
+        select(File).where(
+            File.id == file_id,
+            File.owner_id == current_user.id,
+            File.profile_id == profile_id
+        )
+    )
+
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # Delete file from S3
+    try:
+        s3.delete_object(Bucket=BUCKET_NAME, Key=file.s3_key)
+    except ClientError:
+        raise HTTPException(status_code=500, detail="Failed to delete file from storage")
+
+    # Delete file from database
+    db.delete(file)
+    db.commit()
+
+    return
