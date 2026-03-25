@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 import React, { useEffect, useRef } from "react";
 
 const PAGE_HEIGHT = 1056;
@@ -53,8 +54,14 @@ export default function Editor() {
 
     editable.addEventListener("input", () => handleInput(editable));
 
-    page.appendChild(editable);
+    //  This is the key addition
+    editable.addEventListener("keydown", (e) => {
+      if (e.key === "Backspace") {
+        handleMergeBackspace(editable, e);
+      }
+    });
 
+    page.appendChild(editable);
     containerRef.current.appendChild(page);
 
     return editable;
@@ -63,7 +70,7 @@ export default function Editor() {
   const handleInput = (el) => {
     // Move lines to next page if overflowing
     while (el.scrollHeight > PAGE_HEIGHT) {
-      const lines = el.innerText.split("\n");
+      const lines = el.innerText.split("\n"); 
       if (lines.length === 0) break;
 
       const overflowLine = lines.pop();
@@ -87,11 +94,64 @@ export default function Editor() {
     }
   };
 
+  // Check if cursor is at start 
+  const isCursorAtStart = (el) => {
+    const selection = window.getSelection();
+    if (!selection.rangeCount) return false;
+
+    const range = selection.getRangeAt(0);
+
+    // Ensure cursor is inside this page
+    if (!el.contains(range.startContainer)) return false;
+
+    // Create range from start to cursor
+    const testRange = document.createRange();
+    testRange.selectNodeContents(el);
+    testRange.setEnd(range.startContainer, range.startOffset);
+
+    // Check if anything exists before cursor
+    return testRange.toString().replace(/\n/g, "").length === 0;
+  };
+
+  //  Merge page with previous one if backspace at start
+  const handleMergeBackspace = (el, e) => {
+    if (!isCursorAtStart(el)) return;
+
+    const parentPage = el.parentElement;
+    const prevPage = parentPage.previousSibling;
+    if (!prevPage) return;
+
+    const prevEditable = prevPage.querySelector("[contentEditable]");
+
+    const currentText = el.innerText;
+
+    if (currentText.trim() !== "") {
+      prevEditable.innerText +=
+        (prevEditable.innerText ? "\n" : "") + currentText;
+    }
+
+    parentPage.remove();
+
+    placeCursorAtEnd(prevEditable);
+
+    e.preventDefault();
+  };
+
   const placeCursorAtStart = (el) => {
     const range = document.createRange();
     const sel = window.getSelection();
     range.setStart(el, 0);
     range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    el.focus();
+  };
+
+  const placeCursorAtEnd = (el) => {
+    const range = document.createRange();
+    const sel = window.getSelection();
+    range.selectNodeContents(el);
+    range.collapse(false);
     sel.removeAllRanges();
     sel.addRange(range);
     el.focus();
