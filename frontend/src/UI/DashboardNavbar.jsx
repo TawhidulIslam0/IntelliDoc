@@ -1,11 +1,12 @@
 import React, { useContext, useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { ProfileContext } from "../UI/ProfileContext";
 import logo from "../assets/file_icon_logo.png";
 import logoutIcon from "../assets/logout.png";
 
 export default function DashboardNavbar({ user }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const {
     profiles = [],
     currentProfile,
@@ -21,11 +22,13 @@ export default function DashboardNavbar({ user }) {
     localStorage.removeItem("token");
     navigate("/login");
   };
- // Profile switch handler
+
+  // Profile switch handler
   const handleSwitchProfile = (profile) => {
     setCurrentProfile(profile);
     setShowDropdown(false);
   };
+
   // Group profiles by type (personal, school, work)
   const groupedProfiles = profiles.reduce((acc, profile) => {
     const type = profile.type || "Other";
@@ -34,25 +37,28 @@ export default function DashboardNavbar({ user }) {
     return acc;
   }, {});
 
- // Other profiles to show in dropdown (excluding current)
-  const otherProfiles = profiles.filter(
-    (p) => p.id !== currentProfile?.id
-  );
+  // Other profiles to show in dropdown (excluding current)
+  const otherProfiles = profiles.filter((p) => p.id !== currentProfile?.id);
 
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target)
-      ) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setShowDropdown(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
-    return () =>
-      document.removeEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // Handle clicking the logo
+  const handleLogoClick = () => {
+    if (location.pathname === "/dashboard") {
+      window.location.reload(); // refresh if already on dashboard
+    } else {
+      navigate("/dashboard"); // navigate to dashboard
+    }
+  };
 
   return (
     <header
@@ -67,12 +73,11 @@ export default function DashboardNavbar({ user }) {
       }}
     >
       {/* LEFT: Logo */}
-      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-        <img
-          src={logo}
-          alt="logo"
-          style={{ width: "28px", height: "28px" }}
-        />
+      <div
+        style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }}
+        onClick={handleLogoClick}
+      >
+        <img src={logo} alt="logo" style={{ width: "28px", height: "28px" }} />
         <span
           style={{
             fontSize: "20px",
@@ -85,18 +90,9 @@ export default function DashboardNavbar({ user }) {
       </div>
 
       {/* RIGHT: User + Profile + Logout */}
-      <div
-        style={{ display: "flex", alignItems: "center", gap: "16px" }}
-        ref={dropdownRef}
-      >
-        {/* Username */}
-        {user && (
-          <span style={{ fontWeight: "500", color: "#202124" }}>
-            {user.username}
-          </span>
-        )}
+      <div style={{ display: "flex", alignItems: "center", gap: "16px" }} ref={dropdownRef}>
+        {user && <span style={{ fontWeight: "500", color: "#202124" }}>{user.username}</span>}
 
-        {/* Profile Dropdown */}
         {loading ? (
           <span style={{ color: "#5F6368" }}>Loading...</span>
         ) : (
@@ -160,12 +156,8 @@ export default function DashboardNavbar({ user }) {
                               cursor: "pointer",
                               color: "#202124",
                             }}
-                            onMouseEnter={(e) =>
-                              (e.target.style.backgroundColor = "#F1F3F4")
-                            }
-                            onMouseLeave={(e) =>
-                              (e.target.style.backgroundColor = "transparent")
-                            }
+                            onMouseEnter={(e) => (e.target.style.backgroundColor = "#F1F3F4")}
+                            onMouseLeave={(e) => (e.target.style.backgroundColor = "transparent")}
                           >
                             {p.name}
                           </div>
@@ -184,12 +176,7 @@ export default function DashboardNavbar({ user }) {
           src={logoutIcon}
           alt="logout"
           onClick={handleLogout}
-          style={{
-            width: "20px",
-            height: "20px",
-            cursor: "pointer",
-            opacity: 0.7,
-          }}
+          style={{ width: "20px", height: "20px", cursor: "pointer", opacity: 0.7 }}
           onMouseEnter={(e) => (e.target.style.opacity = 1)}
           onMouseLeave={(e) => (e.target.style.opacity = 0.7)}
         />
