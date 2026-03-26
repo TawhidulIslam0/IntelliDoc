@@ -63,11 +63,14 @@ export const uploadFile = async (file, profileId, folderId = null) => {
     throw new Error("Failed to get presigned URL");
   }
 
-  const { presigned_url } = await initiateResp.json();
+  const { presigned_url, file_id } = await initiateResp.json();
 
   // Upload file to S3 
   const s3Resp = await fetch(presigned_url, {
     method: "PUT",
+    headers: {
+      "Content-Type": file.type,
+    },
     body: file,
   });
 
@@ -75,6 +78,20 @@ export const uploadFile = async (file, profileId, folderId = null) => {
     const errorText = await s3Resp.text();
     console.error("S3 Upload Error:", errorText);
     throw new Error("Upload to S3 failed");
+  }
+
+  // Complete upload and update status
+  const completeResp = await fetch(`${API_URL}/files/${file_id}/complete`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+    },
+  });
+
+  if (!completeResp.ok) {
+    const errorText = await completeResp.text();
+    console.error("Complete upload error:", errorText);
+    throw new Error("Failed to finalize upload");
   }
 
   return { presigned_url };
