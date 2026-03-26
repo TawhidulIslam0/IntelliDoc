@@ -5,6 +5,7 @@ import { getFolders, createFolder } from "../api/folderService";
 import uploadIcon from "../assets/uploadbutton.png";
 import folderIcon from "../assets/folderbutton.png";
 import deleteFileIcon from "../assets/deletefilebutton.png"; 
+import downloadIcon from "../assets/downloadfilebutton.png";
 import { ProfileContext } from "../UI/ProfileContext"; 
 
 const DashBoard = ({ onCreateDoc }) => {
@@ -62,7 +63,6 @@ const DashBoard = ({ onCreateDoc }) => {
   const fetchFiles = useCallback(
     async (folderId = null) => {
       if (!currentProfile) return;
-
       const token = localStorage.getItem("token");
       if (!token) return;
 
@@ -71,9 +71,7 @@ const DashBoard = ({ onCreateDoc }) => {
           ? `http://localhost:8000/api/files/?folder_id=${folderId}&profile_id=${currentProfile.id}`
           : `http://localhost:8000/api/files/?profile_id=${currentProfile.id}`;
 
-        const res = await fetch(url, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
 
         if (res.ok) {
           const data = await res.json();
@@ -89,7 +87,6 @@ const DashBoard = ({ onCreateDoc }) => {
   // Fetch folders and files whenever currentProfile changes
   useEffect(() => {
     if (!currentProfile) return;
-
     fetchFolders();
     fetchFiles();
   }, [currentProfile, fetchFolders, fetchFiles]);
@@ -118,15 +115,49 @@ const DashBoard = ({ onCreateDoc }) => {
     try {
       await deleteFile(fileId);
 
-      //  remove file from UI 
-      setFetchedDocuments((prev) =>
-        prev.filter((file) => file.id !== fileId)
-      );
+      // remove file from UI 
+      setFetchedDocuments((prev) => prev.filter((file) => file.id !== fileId));
     } catch (err) {
       console.error(err);
       alert("Failed to delete file");
     }
   };
+
+  // Download file handler (fetch presigned URL and trigger browser download)
+const handleDownloadFile = async (fileId, fileName) => {
+  try {
+    const token = localStorage.getItem("token");
+    if (!token) throw new Error("No auth token found");
+
+    // Request download URL from backend
+    const res = await fetch(`http://localhost:8000/api/files/${fileId}/download`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!res.ok) throw new Error("Failed to get download URL");
+
+    //  Use the correct key returned by backend
+    const { url } = await res.json(); // <-- backend returns { url: presigned_url }
+
+    // Fetch actual file from S3 using presigned URL
+    const fileResp = await fetch(url);
+    if (!fileResp.ok) throw new Error("Failed to fetch file from S3");
+
+    const blob = await fileResp.blob();
+
+    // 3️⃣ Trigger browser download
+    const downloadLink = document.createElement("a");
+    downloadLink.href = window.URL.createObjectURL(blob);
+    downloadLink.download = fileName;
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    downloadLink.remove();
+    window.URL.revokeObjectURL(downloadLink.href);
+  } catch (err) {
+    console.error("Download error:", err);
+    alert("Failed to download file: " + err.message);
+  }
+};
 
   // File selection
   const handleFileChange = (e) => {
@@ -317,7 +348,7 @@ const DashBoard = ({ onCreateDoc }) => {
                   key={doc.id}
                   style={{ width: 150, cursor: "pointer", position: "relative" }} // NEW
                 >
-                  {/*  Delete button */}
+                  {/* Delete button */}
                   <img
                     src={deleteFileIcon}
                     alt="Delete"
@@ -329,6 +360,25 @@ const DashBoard = ({ onCreateDoc }) => {
                       position: "absolute",
                       top: 5,
                       right: 5,
+                      width: 20,
+                      height: 20,
+                      cursor: "pointer",
+                      zIndex: 10,
+                    }}
+                  />
+
+                  {/* Download button */}
+                  <img
+                    src={downloadIcon}
+                    alt="Download"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDownloadFile(doc.id, doc.name);
+                    }}
+                    style={{
+                      position: "absolute",
+                      bottom: 5, // keeps download button at bottom
+                      right: 5,  // keeps download button at right
                       width: 20,
                       height: 20,
                       cursor: "pointer",
