@@ -127,3 +127,55 @@ export const getDownloadUrl = async (fileId, profileId) => {
 
   return response.json();
 };
+
+// Delete a file
+export const deleteFile = async (fileId, profileId) => {
+  const token = localStorage.getItem("token");
+
+  // Use profileId from localStorage if not provided
+  if (!profileId) profileId = localStorage.getItem("currentProfileId"); 
+  if (!profileId) throw new Error("No profile selected");
+
+  const url = new URL(`${API_URL}/files/${fileId}`);
+  if (profileId) url.searchParams.append("profile_id", profileId);
+
+  const response = await fetch(url.toString(), {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("Delete file error:", errorText);
+    throw new Error("Failed to delete file");
+  }
+
+  return true;
+};
+
+// Download a file directly ( to triggers browser download)
+export const downloadFile = async (fileId, fileName, profileId) => {
+  const token = localStorage.getItem("token");
+
+  // Use profileId from localStorage if not provided
+  if (!profileId) profileId = localStorage.getItem("currentProfileId");
+  if (!profileId) throw new Error("No profile selected");
+
+  const url = new URL(`${API_URL}/files/${fileId}/download`);
+  url.searchParams.append("profile_id", profileId);
+
+  const response = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("Download fetch error:", errorText);
+    throw new Error("Failed to download file");
+  }
+
+  const data = await response.json();
+
+  // open actual S3 file URL in new tab to trigger download
+  window.open(data.url, "_blank");
+};
