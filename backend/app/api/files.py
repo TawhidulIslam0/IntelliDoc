@@ -232,6 +232,36 @@ async def download_file(
 
     return {"url": presigned_url}
 
+# Mark upload as complete after client confirms upload to S3
+@router.post("/{file_id}/complete")
+async def complete_upload(
+    file_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    file = db.scalar(
+        select(File).where(
+            File.id == file_id,
+            File.owner_id == current_user.id
+        )
+    )
+
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # verifying file exists in S3
+    try:
+        s3.head_object(Bucket=BUCKET_NAME, Key=file.s3_key)
+    except ClientError:
+        raise HTTPException(status_code=400, detail="File not uploaded to S3")
+
+    file.status = "completed"
+    file.updated_at = datetime.now(timezone.utc).isoformat()
+
+    db.commit()
+
+    return {"message": "Upload completed"}
+
 # // Delete file remove from S3 and the database
 @router.delete("/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_file(
