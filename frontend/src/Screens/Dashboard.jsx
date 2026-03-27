@@ -9,6 +9,156 @@ import downloadIcon from "../assets/downloadfilebutton.png";
 import deleteFolderIcon from "../assets/deletefolderbutton.png";
 import { ProfileContext } from "../UI/ProfileContext"; 
 
+// Sub-component for Folder to handle individual hover state
+const FolderItem = ({ folder, onFolderClick, onDeleteFolder }) => {
+  const [isHovered, setIsHovered] = useState(false);
+  return (
+    <div
+      onClick={() => onFolderClick(folder)}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      style={{
+        width: 150,
+        height: 45, 
+        border: "1px solid #dadce0",
+        borderRadius: 6,
+        display: "flex",
+        alignItems: "center",
+        padding: "0 10px",
+        cursor: "pointer",
+        backgroundColor: isHovered ? "#f1f3f4" : "#fff", //  Gray hover 
+        position: "relative",
+        transition: "background-color 0.1s",
+      }}
+    >
+      {/* Delete Folder Button - Only shows on hover */}
+      {isHovered && (
+        <img
+          src={deleteFolderIcon}
+          alt="Delete Folder"
+          onClick={(e) => {
+            e.stopPropagation(); 
+            onDeleteFolder(folder.id);
+          }}
+          style={{
+            position: "absolute",
+            top: "50%",
+            right: 8,
+            transform: "translateY(-50%)",
+            width: 16,
+            height: 16,
+            cursor: "pointer",
+            zIndex: 10,
+          }}
+        />
+      )}
+      <span style={{ marginRight: 8 }}>📁</span>
+      <span style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: isHovered ? "80px" : "110px" }}>
+        {folder.name}
+      </span>
+    </div>
+  );
+};
+
+// Sub-component for File to handle individual hover state
+const FileItem = ({ doc, onOpenDoc, onDeleteFile, onDownloadFile }) => {
+  const [isHovered, setIsHovered] = useState(false);
+  return (
+    <div
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      style={{ 
+        width: 150, 
+        cursor: "pointer", 
+        position: "relative",
+        borderRadius: 8,
+        backgroundColor: isHovered ? "#e8f0fe" : "transparent", 
+        transition: "background-color 0.2s"
+      }} 
+    >
+      {/* Delete button - shows on hover */}
+      {isHovered && (
+        <img
+          src={deleteFileIcon}
+          alt="Delete"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDeleteFile(doc.id);
+          }}
+          style={{
+            position: "absolute",
+            top: 5,
+            right: 5,
+            width: 20,
+            height: 20,
+            cursor: "pointer",
+            zIndex: 10,
+          }}
+        />
+      )}
+
+      {/* Download button - shows on hover */}
+      {isHovered && (
+        <img
+          src={downloadIcon}
+          alt="Download"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDownloadFile(doc.id, doc.name);
+          }}
+          style={{
+            position: "absolute",
+            bottom: 50, 
+            right: 5,
+            width: 20,
+            height: 20,
+            cursor: "pointer",
+            zIndex: 10,
+          }}
+        />
+      )}
+
+      <div onClick={() => onOpenDoc(doc)}>
+        <div
+          style={{
+            height: 190,
+            border: isHovered ? "1px solid #4285f4" : "1px solid #dadce0",  
+            borderRadius: 4,
+            backgroundColor: "white",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            transition: "border 0.2s"
+          }}
+        >
+          <span style={{ fontSize: 16, fontWeight: 600, color: isHovered ? "#4285f4" : "#202124" }}>
+            {doc.mime_type === "application/pdf" ? "PDF" : "TXT"}
+          </span>
+        </div>
+
+        <div style={{ padding: "10px 5px" }}>
+          <div
+            style={{
+              fontWeight: 500,
+              fontSize: 13,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              color: isHovered ? "#1967d2" : "#202124"  
+            }}
+          >
+            {doc.name}
+          </div>
+
+          <div style={{ fontSize: 12, color: "#5f6368" }}>
+            {(doc.size_bytes / 1024).toFixed(1)} KB
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const DashBoard = ({ onCreateDoc }) => {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
@@ -18,6 +168,9 @@ const DashBoard = ({ onCreateDoc }) => {
   const [folders, setFolders] = useState([]);
   const [currentFolderId, setCurrentFolderId] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
+
+  // // State to handle hover for the "Blank document" card
+  const [isNewDocHovered, setIsNewDocHovered] = useState(false);
 
   // Extract loading state from ProfileContext to prevent premature rendering
   const { currentProfile, loading: profilesLoading } = useContext(ProfileContext); 
@@ -116,7 +269,7 @@ const DashBoard = ({ onCreateDoc }) => {
     try {
       await deleteFile(fileId);
 
-      // remove file from UI 
+      // Remove file from UI 
       setFetchedDocuments((prev) => prev.filter((file) => file.id !== fileId));
     } catch (err) {
       console.error(err);
@@ -138,7 +291,7 @@ const handleDownloadFile = async (fileId, fileName) => {
     if (!res.ok) throw new Error("Failed to get download URL");
 
     //  Use the correct key returned by backend
-    const { url } = await res.json(); // <-- backend returns { url: presigned_url }
+    const { url } = await res.json(); //  backend returns  url: presigned_url 
 
     // Fetch actual file from S3 using presigned URL
     const fileResp = await fetch(url);
@@ -146,7 +299,7 @@ const handleDownloadFile = async (fileId, fileName) => {
 
     const blob = await fileResp.blob();
 
-    // 3️⃣ Trigger browser download
+    // Trigger browser download
     const downloadLink = document.createElement("a");
     downloadLink.href = window.URL.createObjectURL(blob);
     downloadLink.download = fileName;
@@ -228,7 +381,7 @@ const handleDownloadFile = async (fileId, fileName) => {
     fetchFiles(folder.id);
   };
 
-  // delete folder
+  // Delete folder
   const handleDeleteFolder = async (folderId) => {
     if (!window.confirm("Delete this folder?")) return;
 
@@ -246,7 +399,7 @@ const handleDownloadFile = async (fileId, fileName) => {
     }
   };
 
-  // prevents the dashboard from rendering blank before the context is ready
+  // Prevents the dashboard from rendering blank before the context is ready
   if (profilesLoading) {
     return (
       <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", height: "80vh", fontSize: 18, color: "#5f6368" }}>
@@ -269,27 +422,36 @@ const handleDownloadFile = async (fileId, fileName) => {
           <span style={{ fontSize: 16 }}>Start a new document</span>
 
           <div style={{ marginTop: 15, display: "flex", gap: 30 }}>
-            <div>
+            {/* Wrapped in div to catch hover for the card + label */}
+            <div 
+              onMouseEnter={() => setIsNewDocHovered(true)}
+              onMouseLeave={() => setIsNewDocHovered(false)}
+              style={{ cursor: "pointer" }}
+            >
               <div
                 onClick={handleNewDocument}
                 style={{
                   width: 150,
                   height: 190,
                   backgroundColor: "white",
-                  border: "1px solid #dadce0",
+                  border: isNewDocHovered ? "1px solid #4285f4" : "1px solid #dadce0", 
                   borderRadius: 4,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   fontSize: 50,
                   color: "#4285f4",
-                  cursor: "pointer",
+                  transition: "border 0.2s"
                 }}
               >
                 +
               </div>
 
-              <div style={{ marginTop: 10, fontWeight: 500 }}>
+              <div style={{ 
+                marginTop: 10, 
+                fontWeight: 500,
+                color: isNewDocHovered ? "#1967d2" : "#202124" 
+              }}>
                 Blank document
               </div>
             </div>
@@ -311,43 +473,12 @@ const handleDownloadFile = async (fileId, fileName) => {
             }}
           >
             {folders.map((folder) => (
-              <div
-                key={folder.id}
-                onClick={() => handleFolderClick(folder)}  
-                style={{
-                  width: 150,
-                  height: 100,
-                  border: "1px solid #dadce0",
-                  borderRadius: 4,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  cursor: "pointer",
-                  backgroundColor: "#fff",
-                  position: "relative",
-                }}
-              >
-                {/* Delete Folder Button */}
-                <img
-                  src={deleteFolderIcon}
-                  alt="Delete Folder"
-                  onClick={(e) => {
-                    e.stopPropagation(); 
-                    handleDeleteFolder(folder.id);
-                  }}
-                  style={{
-                    position: "absolute",
-                    top: 5,
-                    right: 5,
-                    width: 18,
-                    height: 18,
-                    cursor: "pointer",
-                    zIndex: 10,
-                  }}
-                />
-
-                📁 {folder.name}
-              </div>
+              <FolderItem 
+                key={folder.id} 
+                folder={folder} 
+                onFolderClick={handleFolderClick} 
+                onDeleteFolder={handleDeleteFolder} 
+              />
             ))}
           </div>
 
@@ -383,83 +514,13 @@ const handleDownloadFile = async (fileId, fileName) => {
               }}
             >
               {fetchedDocuments.map((doc) => (
-                <div
+                <FileItem 
                   key={doc.id}
-                  style={{ width: 150, cursor: "pointer", position: "relative" }} // NEW
-                >
-                  {/* Delete button */}
-                  <img
-                    src={deleteFileIcon}
-                    alt="Delete"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteFile(doc.id);
-                    }}
-                    style={{
-                      position: "absolute",
-                      top: 5,
-                      right: 5,
-                      width: 20,
-                      height: 20,
-                      cursor: "pointer",
-                      zIndex: 10,
-                    }}
-                  />
-
-                  {/* Download button */}
-                  <img
-                    src={downloadIcon}
-                    alt="Download"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDownloadFile(doc.id, doc.name);
-                    }}
-                    style={{
-                      position: "absolute",
-                      bottom: 5, // keeps download button at bottom
-                      right: 5,  // keeps download button at right
-                      width: 20,
-                      height: 20,
-                      cursor: "pointer",
-                      zIndex: 10,
-                    }}
-                  />
-
-                  <div onClick={() => handleOpenExistingDoc(doc)}>
-                    <div
-                      style={{
-                        height: 190,
-                        border: "1px solid #dadce0",
-                        borderRadius: 4,
-                        backgroundColor: "white",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <span style={{ fontSize: 16, fontWeight: 600 }}>
-                        {doc.mime_type === "application/pdf" ? "PDF" : "TXT"}
-                      </span>
-                    </div>
-
-                    <div style={{ padding: "10px 0" }}>
-                      <div
-                        style={{
-                          fontWeight: 500,
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                        }}
-                      >
-                        {doc.name}
-                      </div>
-
-                      <div style={{ fontSize: 12, color: "#5f6368" }}>
-                        {(doc.size_bytes / 1024).toFixed(1)} KB
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                  doc={doc}
+                  onOpenDoc={handleOpenExistingDoc}
+                  onDeleteFile={handleDeleteFile}
+                  onDownloadFile={handleDownloadFile}
+                />
               ))}
             </div>
           )}
