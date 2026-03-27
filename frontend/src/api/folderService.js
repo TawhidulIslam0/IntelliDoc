@@ -1,7 +1,7 @@
 const API_URL = "http://localhost:8000/api";
 
 // Fetch folders for the current user
-export const getFolders = async (profileId) => {
+export const getFolders = async (profileId, parentId = null) => { //  Added parentId
   const token = localStorage.getItem("token");
 
   // Use profileId from localStorage if not provided
@@ -10,6 +10,7 @@ export const getFolders = async (profileId) => {
 
   const url = new URL(`${API_URL}/folders/`);
   if (profileId) url.searchParams.append("profile_id", profileId);
+  if (parentId) url.searchParams.append("parent_id", parentId); // Added to filter current level
 
   const response = await fetch(url.toString(), {
     headers: { Authorization: `Bearer ${token}` },
@@ -32,6 +33,9 @@ export const createFolder = async (name, profileId, parentId = null) => {
   if (!profileId) profileId = localStorage.getItem("currentProfileId");
   if (!profileId) throw new Error("No profile selected");
 
+  // Ensure empty strings are sent as null for the Backend
+  const sanitizedParentId = parentId === "" ? null : parentId;
+
   const response = await fetch(`${API_URL}/folders/`, {
     method: "POST",
     headers: {
@@ -41,7 +45,7 @@ export const createFolder = async (name, profileId, parentId = null) => {
     body: JSON.stringify({
       name,
       profile_id: profileId,
-      parent_id: parentId,
+      parent_id: sanitizedParentId, 
     }),
   });
 
