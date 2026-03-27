@@ -17,6 +17,9 @@ export default function DashboardNavbar({ user }) {
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
 
+  // NEW: search state
+  const [searchQuery, setSearchQuery] = useState("");
+
   // Logout handler
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -87,6 +90,27 @@ export default function DashboardNavbar({ user }) {
         >
           IntelliDoc
         </span>
+      </div>
+
+      {/* MIDDLE: Search Bar (not fully implemented yet)*/} 
+      <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
+        <input
+          type="text"
+          placeholder="Search files..."
+          value={searchQuery}
+          onChange={(e) => {
+            setSearchQuery(e.target.value);
+            console.log("Search:", e.target.value); 
+          }}
+          style={{
+            width: "350px",
+            padding: "8px 12px",
+            borderRadius: "20px",
+            border: "1px solid #DADCE0",
+            outline: "none",
+            backgroundColor: "#F1F3F4",
+          }}
+        />
       </div>
 
       {/* RIGHT: User + Profile + Logout */}
