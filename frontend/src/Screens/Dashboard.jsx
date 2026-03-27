@@ -26,7 +26,7 @@ const FolderItem = ({ folder, onFolderClick, onDeleteFolder }) => {
         alignItems: "center",
         padding: "0 10px",
         cursor: "pointer",
-        backgroundColor: isHovered ? "#f1f3f4" : "#fff", //  Gray hover 
+        backgroundColor: isHovered ? "#f1f3f4" : "#fff", 
         position: "relative",
         transition: "background-color 0.1s",
       }}
@@ -169,7 +169,7 @@ const DashBoard = ({ onCreateDoc }) => {
   const [currentFolderId, setCurrentFolderId] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
 
-  // // State to handle hover for the "Blank document" card
+  // State to handle hover for the "Blank document" card
   const [isNewDocHovered, setIsNewDocHovered] = useState(false);
 
   // Extract loading state from ProfileContext to prevent premature rendering
@@ -206,12 +206,13 @@ const DashBoard = ({ onCreateDoc }) => {
   const fetchFolders = useCallback(async () => {
     if (!currentProfile) return;
     try {
-      const data = await getFolders(currentProfile.id); // pass profile ID if needed
+      // Added currentFolderId to get subfolders
+      const data = await getFolders(currentProfile.id, currentFolderId); 
       setFolders(data);
     } catch (err) {
       console.error("Failed to fetch folders:", err);
     }
-  }, [currentProfile]);
+  }, [currentProfile, currentFolderId]);
 
   // Fetch files for current folder and profile
   const fetchFiles = useCallback(
@@ -221,8 +222,10 @@ const DashBoard = ({ onCreateDoc }) => {
       if (!token) return;
 
       try {
-        const url = folderId
-          ? `http://localhost:8000/api/files/?folder_id=${folderId}&profile_id=${currentProfile.id}`
+        // Use the state if no specific folderId is passed
+        const targetId = folderId !== null ? folderId : currentFolderId;
+        const url = targetId
+          ? `http://localhost:8000/api/files/?folder_id=${targetId}&profile_id=${currentProfile.id}`
           : `http://localhost:8000/api/files/?profile_id=${currentProfile.id}`;
 
         const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
@@ -235,15 +238,15 @@ const DashBoard = ({ onCreateDoc }) => {
         console.error("Failed to fetch files:", err);
       }
     },
-    [currentProfile]
+    [currentProfile, currentFolderId]
   );
 
-  // Fetch folders and files whenever currentProfile changes
+  // Added currentFolderId to dependency array to trigger refresh on navigation
   useEffect(() => {
     if (!currentProfile) return;
     fetchFolders();
     fetchFiles();
-  }, [currentProfile, fetchFolders, fetchFiles]);
+  }, [currentProfile, currentFolderId, fetchFolders, fetchFiles]);
 
   // Create blank document
   const handleNewDocument = () => {
@@ -346,8 +349,8 @@ const handleDownloadFile = async (fileId, fileName) => {
 
     try {
       setUploading(true);
-
-      await uploadFile(file, currentFolderId);
+      // Added currentProfile.id to the upload parameters
+      await uploadFile(file, currentProfile.id, currentFolderId);
 
       alert("File uploaded successfully");
       setFile(null);
@@ -367,7 +370,8 @@ const handleDownloadFile = async (fileId, fileName) => {
     if (!name) return;
 
     try {
-      await createFolder(name, currentFolderId);
+      // Added currentProfile.id and currentFolderId (as parent)
+      await createFolder(name, currentProfile.id, currentFolderId);
       fetchFolders();
     } catch (err) {
       console.error(err);
