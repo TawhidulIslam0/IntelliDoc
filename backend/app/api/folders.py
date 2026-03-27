@@ -69,7 +69,8 @@ def create_folder(
 def get_folders(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-    profile_id: Optional[uuid.UUID] = None
+    profile_id: Optional[uuid.UUID] = None,
+    parent_id: Optional[uuid.UUID] = None # Added parent_id to allow filtering by current folder
 ):
     # If no profile_id provided, default to default profile
     if not profile_id:
@@ -83,7 +84,8 @@ def get_folders(
     # Fetch folders for user & profile
     stmt = select(Folder).where(
         Folder.owner_id == current_user.id,
-        Folder.profile_id == profile_id
+        Folder.profile_id == profile_id,
+        Folder.parent_id == parent_id # Filter to only show folders inside the current parent
     )
     folders = db.scalars(stmt).all()
     return folders
