@@ -132,13 +132,12 @@ async def list_files(
             raise HTTPException(status_code=404, detail="Default profile not found")
         profile_id = profile.id
 
+    # Updated query to explicitly filter by folder_id 
     stmt = select(File).where(
         File.owner_id == current_user.id,
-        File.profile_id == profile_id
+        File.profile_id == profile_id,
+        File.folder_id == folder_id 
     )
-
-    if folder_id:
-        stmt = stmt.where(File.folder_id == folder_id)
 
     files = db.scalars(stmt).all()
 
@@ -262,7 +261,7 @@ async def complete_upload(
 
     return {"message": "Upload completed"}
 
-# // Delete file remove from S3 and the database
+# Delete file remove from S3 and the database
 @router.delete("/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_file(
     file_id: uuid.UUID,
