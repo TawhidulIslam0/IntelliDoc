@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useContext, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { uploadFile, getPreviewUrl, deleteFile } from "../api/fileService"; 
-import { getFolders, createFolder } from "../api/folderService";
+import { getFolders, createFolder, deleteFolder } from "../api/folderService";
 import uploadIcon from "../assets/uploadbutton.png";
 import folderIcon from "../assets/folderbutton.png";
 import deleteFileIcon from "../assets/deletefilebutton.png"; 
 import downloadIcon from "../assets/downloadfilebutton.png";
+import deleteFolderIcon from "../assets/deletefolderbutton.png";
 import { ProfileContext } from "../UI/ProfileContext"; 
 
 const DashBoard = ({ onCreateDoc }) => {
@@ -227,6 +228,24 @@ const handleDownloadFile = async (fileId, fileName) => {
     fetchFiles(folder.id);
   };
 
+  // delete folder
+  const handleDeleteFolder = async (folderId) => {
+    if (!window.confirm("Delete this folder?")) return;
+
+    try {
+      await deleteFolder(folderId, currentProfile.id);
+
+      // Remove from UI immediately
+      setFolders((prev) =>
+        prev.filter((folder) => folder.id !== folderId)
+      );
+
+    } catch (err) {
+      console.error(err);
+      alert("Failed to delete folder");
+    }
+  };
+
   // prevents the dashboard from rendering blank before the context is ready
   if (profilesLoading) {
     return (
@@ -294,7 +313,7 @@ const handleDownloadFile = async (fileId, fileName) => {
             {folders.map((folder) => (
               <div
                 key={folder.id}
-                onClick={() => handleFolderClick(folder)}
+                onClick={() => handleFolderClick(folder)}  
                 style={{
                   width: 150,
                   height: 100,
@@ -305,8 +324,28 @@ const handleDownloadFile = async (fileId, fileName) => {
                   justifyContent: "center",
                   cursor: "pointer",
                   backgroundColor: "#fff",
+                  position: "relative",
                 }}
               >
+                {/* Delete Folder Button */}
+                <img
+                  src={deleteFolderIcon}
+                  alt="Delete Folder"
+                  onClick={(e) => {
+                    e.stopPropagation(); 
+                    handleDeleteFolder(folder.id);
+                  }}
+                  style={{
+                    position: "absolute",
+                    top: 5,
+                    right: 5,
+                    width: 18,
+                    height: 18,
+                    cursor: "pointer",
+                    zIndex: 10,
+                  }}
+                />
+
                 📁 {folder.name}
               </div>
             ))}
