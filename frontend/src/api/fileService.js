@@ -41,6 +41,9 @@ export const uploadFile = async (file, profileId, folderId = null) => {
   if (!profileId) profileId = localStorage.getItem("currentProfileId");
   if (!profileId) throw new Error("No profile selected");
 
+  // Convert empty string to null so Backend UUID validation passes
+  const sanitizedFolderId = folderId === "" ? null : folderId;
+
   // Request presigned URL from backend
   const initiateResp = await fetch(`${API_URL}/files/initiate-upload`, {
     method: "POST",
@@ -52,7 +55,7 @@ export const uploadFile = async (file, profileId, folderId = null) => {
       name: file.name,
       size_bytes: file.size,
       mime_type: file.type,
-      folder_id: folderId,
+      folder_id: sanitizedFolderId, 
       profile_id: profileId,
     }),
   });
