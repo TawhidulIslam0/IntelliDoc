@@ -166,8 +166,11 @@ const DashBoard = ({ onCreateDoc }) => {
   const [uploading, setUploading] = useState(false);
   const [fetchedDocuments, setFetchedDocuments] = useState([]);
   const [folders, setFolders] = useState([]);
-  const [currentFolderId, setCurrentFolderId] = useState(null);
+  const [folderStack, setFolderStack] = useState([]);
   const [previewUrl, setPreviewUrl] = useState(null);
+
+  // Derive currentFolderId from the top of the folderStack
+  const currentFolderId = folderStack.length > 0 ? folderStack[folderStack.length - 1].id : null;
 
   // State to handle hover for the "Blank document" card
   const [isNewDocHovered, setIsNewDocHovered] = useState(false);
@@ -281,40 +284,40 @@ const DashBoard = ({ onCreateDoc }) => {
   };
 
   // Download file handler (fetch presigned URL and trigger browser download)
-const handleDownloadFile = async (fileId, fileName) => {
-  try {
-    const token = localStorage.getItem("token");
-    if (!token) throw new Error("No auth token found");
+  const handleDownloadFile = async (fileId, fileName) => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) throw new Error("No auth token found");
 
-    // Request download URL from backend
-    const res = await fetch(`http://localhost:8000/api/files/${fileId}/download`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+      // Request download URL from backend
+      const res = await fetch(`http://localhost:8000/api/files/${fileId}/download`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-    if (!res.ok) throw new Error("Failed to get download URL");
+      if (!res.ok) throw new Error("Failed to get download URL");
 
-    //  Use the correct key returned by backend
-    const { url } = await res.json(); //  backend returns  url: presigned_url 
+      //  Use the correct key returned by backend
+      const { url } = await res.json(); //  backend returns  url: presigned_url 
 
-    // Fetch actual file from S3 using presigned URL
-    const fileResp = await fetch(url);
-    if (!fileResp.ok) throw new Error("Failed to fetch file from S3");
+      // Fetch actual file from S3 using presigned URL
+      const fileResp = await fetch(url);
+      if (!fileResp.ok) throw new Error("Failed to fetch file from S3");
 
-    const blob = await fileResp.blob();
+      const blob = await fileResp.blob();
 
-    // Trigger browser download
-    const downloadLink = document.createElement("a");
-    downloadLink.href = window.URL.createObjectURL(blob);
-    downloadLink.download = fileName;
-    document.body.appendChild(downloadLink);
-    downloadLink.click();
-    downloadLink.remove();
-    window.URL.revokeObjectURL(downloadLink.href);
-  } catch (err) {
-    console.error("Download error:", err);
-    alert("Failed to download file: " + err.message);
-  }
-};
+      // Trigger browser download
+      const downloadLink = document.createElement("a");
+      downloadLink.href = window.URL.createObjectURL(blob);
+      downloadLink.download = fileName;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      downloadLink.remove();
+      window.URL.revokeObjectURL(downloadLink.href);
+    } catch (err) {
+      console.error("Download error:", err);
+      alert("Failed to download file: " + err.message);
+    }
+  };
 
   // File selection
   const handleFileChange = (e) => {
@@ -381,10 +384,14 @@ const handleDownloadFile = async (fileId, fileName) => {
 
   // Open folder
   const handleFolderClick = (folder) => {
-    setCurrentFolderId(folder.id);
-    fetchFiles(folder.id);
+    setFolderStack((prev) => [...prev, folder]);
   };
 
+  // Go back one folder
+  const handleGoBack = () => {
+    setFolderStack((prev) => prev.slice(0, -1));
+  };
+  
   // Delete folder
   const handleDeleteFolder = async (folderId) => {
     if (!window.confirm("Delete this folder?")) return;
@@ -466,6 +473,68 @@ const handleDownloadFile = async (fileId, fileName) => {
       {/* Folders */}
       <div style={{ flex: 1, padding: 20 }}>
         <div style={{ maxWidth: 850, margin: "0 auto" }}>
+          {/* Breadcrumb Navigation */}
+
+          <div
+            style={{
+              marginBottom: 15,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              fontSize: 14,
+            }}
+          >
+
+            {/* Back Button */}
+            {folderStack.length > 0 && (
+              <button
+                onClick={handleGoBack}
+                style={{
+                  padding: "5px 10px",
+                  borderRadius: 6,
+                  border: "1px solid #dadce0",
+                  cursor: "pointer",
+                  backgroundColor: "white",
+                }}
+              >
+                ← Back
+              </button>
+            )}
+
+            {/* Breadcrumb Path */}
+            <div>
+
+              {/* Home */}
+              <span
+                style={{ cursor: "pointer" }}
+                onClick={() => setFolderStack([])}
+              >
+                Home
+              </span>
+
+              {/* Folder Path */}
+              {folderStack.map((folder, index) => (
+                <span key={folder.id}>
+                  {" / "}
+                  <span
+                    style={{
+                      cursor: "pointer",
+                      fontWeight: 500,
+                    }}
+                    onClick={() =>
+                      setFolderStack(
+                        folderStack.slice(0, index + 1)
+                      )
+                    }
+                  >
+                    {folder.name}
+                  </span>
+                </span>
+              ))}
+
+            </div>
+
+          </div>
           <span style={{ fontWeight: 500, fontSize: 16 }}>Folders</span>
 
           <div
@@ -495,7 +564,7 @@ const handleDownloadFile = async (fileId, fileName) => {
               display: "block",
             }}
           >
-            Files {currentFolderId ? "(Inside Folder)" : ""}
+            Files
           </span>
 
           {fetchedDocuments.length === 0 ? (
