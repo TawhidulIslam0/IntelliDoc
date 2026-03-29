@@ -1,6 +1,7 @@
 import uuid
 import boto3
 import os
+import json
 
 from sqlalchemy import select
 from botocore.exceptions import ClientError
@@ -42,11 +43,23 @@ class InitiateUploadRequest(BaseModel):
     size_bytes: int
     mime_type: str
     folder_id: Optional[uuid.UUID] = None
-    profile_id: uuid.UUID  # required profile for upload
+    profile_id: uuid.UUID 
+
 
 class InitiateUploadResponse(BaseModel):
     file_id: uuid.UUID
     presigned_url: str
+
+
+class CreateBlankDocRequest(BaseModel):
+    name: str = "Untitled Document.idoc"
+    folder_id: Optional[uuid.UUID] = None
+    profile_id: uuid.UUID
+
+
+class UpdateFileContentRequest(BaseModel):
+    content: dict
+
 
 # Create presigned URL for file upload
 @router.post("/initiate-upload", response_model=InitiateUploadResponse, status_code=status.HTTP_201_CREATED)
@@ -57,12 +70,15 @@ async def initiate_upload(
 ):
     # Check that the profile belongs to the current user
     profile = db.scalar(
-        select(Profile).where(Profile.id == payload.profile_id, Profile.owner_id == current_user.id)
+        select(Profile).where(
+            Profile.id == payload.profile_id,
+            Profile.owner_id == current_user.id
+        )
     )
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found or not owned by user")
 
-    # Check for duplicate file name in the same folder
+    # Check for duplicate file name in same folder/profile
     existing_file = db.execute(
         select(File).where(
             File.owner_id == current_user.id,
@@ -86,18 +102,22 @@ async def initiate_upload(
     try:
         presigned_url = s3.generate_presigned_url(
             "put_object",
-            Params={"Bucket": BUCKET_NAME, "Key": s3_key, "ContentType": payload.mime_type},
+            Params={
+                "Bucket": BUCKET_NAME,
+                "Key": s3_key,
+                "ContentType": payload.mime_type
+            },
             ExpiresIn=PRESIGNED_URL_EXPIRY
         )
     except ClientError:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to generate presigned URL")
+        raise HTTPException(status_code=500, detail="Failed to generate presigned URL")
 
     # Save file metadata in database
     now = datetime.now(timezone.utc)
     new_file = File(
         id=file_id,
         owner_id=current_user.id,
-        profile_id=payload.profile_id,  
+        profile_id=payload.profile_id,
         folder_id=payload.folder_id,
         name=payload.name,
         s3_key=s3_key,
@@ -115,28 +135,95 @@ async def initiate_upload(
     # Return presigned URL to client
     return InitiateUploadResponse(file_id=new_file.id, presigned_url=presigned_url)
 
+
+# Creating blank document endpoint
+@router.post("/create-blank-doc", status_code=status.HTTP_201_CREATED)
+async def create_blank_doc(
+    payload: CreateBlankDocRequest,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)]
+):
+    # Check profile ownership
+    profile = db.scalar(
+        select(Profile).where(
+            Profile.id == payload.profile_id,
+            Profile.owner_id == current_user.id
+        )
+    )
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    # Ensure .idoc extension
+    filename = payload.name
+    if not filename.lower().endswith(".idoc"):
+        filename += ".idoc"
+
+    file_id = uuid.uuid4()
+    s3_key = f"uploads/{current_user.id}/{file_id}/{filename}"
+
+    # Create blank JSON structure in S3
+    try:
+        s3.put_object(
+            Bucket=BUCKET_NAME,
+            Key=s3_key,
+            Body=json.dumps({"pages": [""]}),
+            ContentType="application/json"
+        )
+    except ClientError:
+        raise HTTPException(status_code=500, detail="Failed to initialize S3 storage")
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    new_file = File(
+        id=file_id,
+        owner_id=current_user.id,
+        profile_id=payload.profile_id,
+        folder_id=payload.folder_id,
+        name=filename,
+        s3_key=s3_key,
+        size_bytes=0,
+        mime_type="application/json",
+        status="completed",
+        created_at=now,
+        updated_at=now
+    )
+
+    db.add(new_file)
+    db.commit()
+    db.refresh(new_file)
+
+    return {
+        "file_id": str(new_file.id),
+        "name": new_file.name,
+        "message": "Blank document created successfully"
+    }
+
+
 # List files for current user, optionally filtered by folder
 @router.get("/")
 async def list_files(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-    profile_id: Optional[uuid.UUID] = None,  # must provide profile to list files
+    profile_id: Optional[uuid.UUID] = None,
     folder_id: Optional[uuid.UUID] = None
 ):
     # Default to default profile if none provided
     if not profile_id:
         profile = db.scalar(
-            select(Profile).where(Profile.owner_id == current_user.id, Profile.is_default == True)
+            select(Profile).where(
+                Profile.owner_id == current_user.id,
+                Profile.is_default == True
+            )
         )
         if not profile:
             raise HTTPException(status_code=404, detail="Default profile not found")
         profile_id = profile.id
 
-    # Updated query to explicitly filter by folder_id 
+    # Fetch files for user/profile/folder
     stmt = select(File).where(
         File.owner_id == current_user.id,
         File.profile_id == profile_id,
-        File.folder_id == folder_id 
+        File.folder_id == folder_id
     )
 
     files = db.scalars(stmt).all()
@@ -153,6 +240,7 @@ async def list_files(
         for file in files
     ]
 
+
 # Generate presigned URL for preview
 @router.get("/{file_id}/preview")
 async def preview_file(
@@ -164,7 +252,10 @@ async def preview_file(
     # Default to default profile if profile_id not provided
     if not profile_id:
         profile = db.scalar(
-            select(Profile).where(Profile.owner_id == current_user.id, Profile.is_default == True)
+            select(Profile).where(
+                Profile.owner_id == current_user.id,
+                Profile.is_default == True
+            )
         )
         profile_id = profile.id if profile else None
 
@@ -175,10 +266,10 @@ async def preview_file(
             File.profile_id == profile_id
         )
     )
+
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
-    # Generate presigned URL for preview
     try:
         presigned_url = s3.generate_presigned_url(
             "get_object",
@@ -189,6 +280,7 @@ async def preview_file(
         raise HTTPException(status_code=500, detail="Failed to generate preview URL")
 
     return {"url": presigned_url}
+
 
 # Generate presigned URL for download
 @router.get("/{file_id}/download")
@@ -201,7 +293,10 @@ async def download_file(
     # Default to default profile if profile_id not provided
     if not profile_id:
         profile = db.scalar(
-            select(Profile).where(Profile.owner_id == current_user.id, Profile.is_default == True)
+            select(Profile).where(
+                Profile.owner_id == current_user.id,
+                Profile.is_default == True
+            )
         )
         profile_id = profile.id if profile else None
 
@@ -212,10 +307,10 @@ async def download_file(
             File.profile_id == profile_id
         )
     )
+
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
-    # Generate presigned URL for download
     try:
         presigned_url = s3.generate_presigned_url(
             "get_object",
@@ -231,6 +326,7 @@ async def download_file(
 
     return {"url": presigned_url}
 
+
 # Mark upload as complete after client confirms upload to S3
 @router.post("/{file_id}/complete")
 async def complete_upload(
@@ -239,16 +335,13 @@ async def complete_upload(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     file = db.scalar(
-        select(File).where(
-            File.id == file_id,
-            File.owner_id == current_user.id
-        )
+        select(File).where(File.id == file_id, File.owner_id == current_user.id)
     )
 
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
-    # verifying file exists in S3
+    # Verify file exists in S3
     try:
         s3.head_object(Bucket=BUCKET_NAME, Key=file.s3_key)
     except ClientError:
@@ -261,7 +354,8 @@ async def complete_upload(
 
     return {"message": "Upload completed"}
 
-# Delete file remove from S3 and the database
+
+# Delete file from S3 and database
 @router.delete("/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_file(
     file_id: uuid.UUID,
@@ -279,7 +373,6 @@ async def delete_file(
         )
         profile_id = profile.id if profile else None
 
-    # Find file
     file = db.scalar(
         select(File).where(
             File.id == file_id,
@@ -291,14 +384,92 @@ async def delete_file(
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
-    # Delete file from S3
+    # Delete from S3
     try:
         s3.delete_object(Bucket=BUCKET_NAME, Key=file.s3_key)
     except ClientError:
         raise HTTPException(status_code=500, detail="Failed to delete file from storage")
 
-    # Delete file from database
     db.delete(file)
     db.commit()
 
     return
+
+
+# Add this endpoint so the editor can load file content
+@router.get("/{file_id}/content")
+async def get_file_content(
+    file_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)]
+):
+    # Fetch file metadata
+    file = db.scalar(
+        select(File).where(File.id == file_id, File.owner_id == current_user.id)
+    )
+
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    try:
+        # Load actual JSON content from S3
+        response = s3.get_object(Bucket=BUCKET_NAME, Key=file.s3_key)
+        content_bytes = response["Body"].read().decode("utf-8")
+        content_json = json.loads(content_bytes)
+
+        return {"content": content_json}
+
+    except ClientError as e:
+        # If file doesn't exist yet, return default structure
+        if e.response["Error"]["Code"] == "NoSuchKey":
+            return {"content": {"pages": [""]}}
+        raise HTTPException(status_code=500, detail="Failed to fetch from S3")
+
+
+# Auto-save / sync file content
+@router.put("/{file_id}/content")
+async def update_file_content(
+    file_id: uuid.UUID,
+    payload: UpdateFileContentRequest,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)]
+):
+    file = db.scalar(
+        select(File).where(File.id == file_id, File.owner_id == current_user.id)
+    )
+
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    content = payload.content
+
+    # Validate content structure
+    if not isinstance(content, dict):
+        raise HTTPException(status_code=422, detail="Content must be an object")
+
+    if "pages" not in content:
+        raise HTTPException(status_code=422, detail="Missing 'pages' field")
+
+    if not isinstance(content["pages"], list):
+        raise HTTPException(status_code=422, detail="'pages' must be a list")
+
+    # Normalize page data
+    content["pages"] = [str(p) for p in content["pages"]]
+
+    try:
+        s3.put_object(
+            Bucket=BUCKET_NAME,
+            Key=file.s3_key,
+            Body=json.dumps(content),
+            ContentType="application/json"
+        )
+    except ClientError:
+        raise HTTPException(status_code=500, detail="Failed to sync content to storage")
+
+    now = datetime.now(timezone.utc).isoformat()
+    file.updated_at = now
+    file.size_bytes = len(json.dumps(content).encode("utf-8"))
+
+    db.commit()
+
+    return {"message": "Sync successful", "updated_at": now}
