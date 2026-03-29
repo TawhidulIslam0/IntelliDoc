@@ -59,7 +59,9 @@ class CreateBlankDocRequest(BaseModel):
 
 class UpdateFileContentRequest(BaseModel):
     content: dict
-
+    
+class RenameFileRequest(BaseModel):
+    name: str
 
 # Create presigned URL for file upload
 @router.post("/initiate-upload", response_model=InitiateUploadResponse, status_code=status.HTTP_201_CREATED)
@@ -473,3 +475,27 @@ async def update_file_content(
     db.commit()
 
     return {"message": "Sync successful", "updated_at": now}
+
+
+# Add this route to the router
+@router.put("/{file_id}/title")
+async def rename_file(
+    file_id: uuid.UUID,
+    payload: RenameFileRequest,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)]
+):
+    # Find the file belonging to this user
+    file = db.scalar(
+        select(File).where(File.id == file_id, File.owner_id == current_user.id)
+    )
+
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # Update the name 
+    file.name = payload.name
+    file.updated_at = datetime.now(timezone.utc).isoformat()
+
+    db.commit()
+    return {"message": "Name updated successfully"}
