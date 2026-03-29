@@ -6,12 +6,60 @@ const PAGE_WIDTH = 816;
 const GAP_SIZE = 24;
 const PADDING = 96;
 
-export default function Editor() {
+export default function Editor({ document: doc, setSaveStatus }) {
   const containerRef = useRef(null);
+  const saveTimeoutRef = useRef(null);
+  // Keep track of the last saved ID to prevent reloading the same doc
+  const lastLoadedId = useRef(null);
 
-  // Create a new blank page
-  const createPage = () => {
+  // Auto Save  
+  const triggerAutoSave = () => {
+    setSaveStatus("saving");
+
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        if (!doc?.id) return;
+
+        const token = localStorage.getItem("token");
+        const allPages = containerRef.current.querySelectorAll("[contentEditable]");
+        
+        // Use innerText to preserve line breaks
+        const pages = Array.from(allPages).map(p => p.innerText ?? "");
+
+        const res = await fetch(`http://localhost:8000/api/files/${doc.id}/content`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          //  Wrap the pages array in a 'content' object to match Pydantic
+          body: JSON.stringify({
+            content: { pages: pages }
+          })
+        });
+
+        if (!res.ok) {
+          const errorData = await res.json();
+          console.error("Backend Error:", errorData);
+          throw new Error("Server failed to save");
+        }
+
+        setSaveStatus("saved");
+      } catch (err) {
+        console.error("Save failed:", err);
+        setSaveStatus("error");
+      }
+    }, 1500);
+  };
+
+  // Dom page generation
+  const createPage = (initialContent = "", index) => {
+    if (!containerRef.current) return;
+
     const page = document.createElement("div");
+    page.className = "editor-page";
     page.style.width = `${PAGE_WIDTH}px`;
     page.style.height = `${PAGE_HEIGHT}px`;
     page.style.backgroundColor = "white";
@@ -20,23 +68,16 @@ export default function Editor() {
     page.style.position = "relative";
     page.style.marginBottom = `${GAP_SIZE}px`;
 
-    // Page number
     const pageNumber = document.createElement("div");
     pageNumber.style.position = "absolute";
     pageNumber.style.bottom = "30px";
     pageNumber.style.left = "50%";
     pageNumber.style.transform = "translateX(-50%)";
-    pageNumber.style.backgroundColor = "#1f1f1f";
-    pageNumber.style.color = "white";
-    pageNumber.style.padding = "2px 10px";
-    pageNumber.style.borderRadius = "4px";
+    pageNumber.style.color = "#70757a";
     pageNumber.style.fontSize = "11px";
-    pageNumber.innerText = containerRef.current
-      ? containerRef.current.children.length + 1
-      : 1;
+    pageNumber.innerText = (index !== undefined ? index + 1 : containerRef.current.children.length + 1);
     page.appendChild(pageNumber);
 
-    // Editable div
     const editable = document.createElement("div");
     editable.contentEditable = "true";
     editable.style.width = "100%";
@@ -51,32 +92,34 @@ export default function Editor() {
     editable.style.overflow = "hidden";
     editable.style.whiteSpace = "pre-wrap";
     editable.style.wordBreak = "break-word";
+    
+    //  fallback to empty string if null/undefined
+    editable.innerText = initialContent || "";
 
-    editable.addEventListener("input", () => handleInput(editable));
+    editable.addEventListener("input", () => {
+      handleInput(editable);
+      triggerAutoSave();
+    });
 
-    //  This is the key addition
     editable.addEventListener("keydown", (e) => {
       if (e.key === "Backspace") {
         handleMergeBackspace(editable, e);
+        triggerAutoSave();
       }
     });
 
     page.appendChild(editable);
     containerRef.current.appendChild(page);
-
     return editable;
   };
 
+  // Input handling
   const handleInput = (el) => {
-    // Move lines to next page if overflowing
     while (el.scrollHeight > PAGE_HEIGHT) {
-      const lines = el.innerText.split("\n"); 
+      const lines = el.innerText.split("\n");
       if (lines.length === 0) break;
-
       const overflowLine = lines.pop();
       el.innerText = lines.join("\n");
-
-      // Get or create next page
       const parentPage = el.parentElement;
       let nextPage = parentPage.nextSibling;
       let nextEditable;
@@ -85,56 +128,35 @@ export default function Editor() {
       } else {
         nextEditable = nextPage.querySelector("[contentEditable]");
       }
-
-      // Prepend overflow line to next page
       nextEditable.innerText = overflowLine + "\n" + nextEditable.innerText;
-
-      // Move caret automatically to the new page
       placeCursorAtStart(nextEditable);
     }
   };
 
-  // Check if cursor is at start 
-  const isCursorAtStart = (el) => {
-    const selection = window.getSelection();
-    if (!selection.rangeCount) return false;
-
-    const range = selection.getRangeAt(0);
-
-    // Ensure cursor is inside this page
-    if (!el.contains(range.startContainer)) return false;
-
-    // Create range from start to cursor
-    const testRange = document.createRange();
-    testRange.selectNodeContents(el);
-    testRange.setEnd(range.startContainer, range.startOffset);
-
-    // Check if anything exists before cursor
-    return testRange.toString().replace(/\n/g, "").length === 0;
-  };
-
-  //  Merge page with previous one if backspace at start
   const handleMergeBackspace = (el, e) => {
     if (!isCursorAtStart(el)) return;
-
     const parentPage = el.parentElement;
     const prevPage = parentPage.previousSibling;
     if (!prevPage) return;
-
     const prevEditable = prevPage.querySelector("[contentEditable]");
-
     const currentText = el.innerText;
-
     if (currentText.trim() !== "") {
-      prevEditable.innerText +=
-        (prevEditable.innerText ? "\n" : "") + currentText;
+      prevEditable.innerText += (prevEditable.innerText ? "\n" : "") + currentText;
     }
-
     parentPage.remove();
-
     placeCursorAtEnd(prevEditable);
-
     e.preventDefault();
+  };
+
+  const isCursorAtStart = (el) => {
+    const selection = window.getSelection();
+    if (!selection || !selection.rangeCount) return false;
+    const range = selection.getRangeAt(0);
+    if (!el.contains(range.startContainer)) return false;
+    const testRange = document.createRange();
+    testRange.selectNodeContents(el);
+    testRange.setEnd(range.startContainer, range.startOffset);
+    return testRange.toString().replace(/\n/g, "").length === 0;
   };
 
   const placeCursorAtStart = (el) => {
@@ -157,11 +179,50 @@ export default function Editor() {
     el.focus();
   };
 
+  // Load content from backend
   useEffect(() => {
-    if (containerRef.current.children.length === 0) {
-      createPage();
-    }
-  }, []);
+    const loadContent = async () => {
+      if (!doc?.id || lastLoadedId.current === doc.id) return;
+
+      try {
+        setSaveStatus("saving"); 
+        const token = localStorage.getItem("token");
+        
+        const res = await fetch(`http://localhost:8000/api/files/${doc.id}/content`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          // backend returns { "content": { "pages": [...] } }
+          const serverPages = data.content?.pages || [""];
+          
+          if (containerRef.current) {
+            containerRef.current.innerHTML = "";
+            serverPages.forEach((content, idx) => createPage(content, idx));
+          }
+          
+          lastLoadedId.current = doc.id;
+          setSaveStatus("saved");
+        } else {
+          if (containerRef.current) {
+            containerRef.current.innerHTML = "";
+            createPage("");
+          }
+          setSaveStatus("saved");
+        }
+      } catch (err) {
+        console.error("Load failed:", err);
+        setSaveStatus("error");
+      }
+    };
+
+    loadContent();
+
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
+  }, [doc?.id]); 
 
   return (
     <main
