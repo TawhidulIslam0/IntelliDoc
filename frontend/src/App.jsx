@@ -119,26 +119,45 @@ export default function App() {
   };
 
   // Rename document
-  const handleRenameDoc = (newTitle) => {
-    if (!activeDoc) return;
+  const handleRenameDoc = async (newName) => {
+    if (!activeDoc || !newName.trim()) return;
 
     setSaveStatus("saving");
-
     const docId = activeDoc.id || activeDoc.file_id;
+    const token = localStorage.getItem("token");
 
-    setDocuments((prevDocs) =>
-      prevDocs.map((doc) =>
-        (doc.id || doc.file_id) === docId
-          ? { ...doc, title: newTitle }
-          : doc
-      )
-    );
+    try {
+      // Sync to Backend 
+      const res = await fetch(`http://127.0.0.1:8000/api/files/${docId}/title`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify({ name: newName }),
+      });
 
-    setActiveDoc((prev) =>
-      prev ? { ...prev, title: newTitle } : prev
-    );
+      if (!res.ok) throw new Error("Failed to update title on server");
 
-    setTimeout(() => setSaveStatus("saved"), 800);
+      // Update local list 
+      setDocuments((prevDocs) =>
+        prevDocs.map((doc) =>
+          (doc.id || doc.file_id) === docId
+            ? { ...doc, name: newName }
+            : doc
+        )
+      );
+
+      // Update active document 
+      setActiveDoc((prev) =>
+        prev ? { ...prev, name: newName } : prev
+      );
+
+      setSaveStatus("saved");
+    } catch (err) {
+      console.error("Rename failed:", err);
+      setSaveStatus("error");
+    }
   };
 
   // Landing redirect
@@ -191,11 +210,11 @@ export default function App() {
           path="/editor/:id"
           element={
             <ProtectedRoute>
-              {/*  check for currentProfile and EITHER a doc or a URL ID  */}
+              {/* check for currentProfile and EITHER a doc or a URL ID  */}
               {currentProfile && (currentDoc || urlId) ? (
                 <>
                   <EditorNavbar
-                    activeDoc={currentDoc || { id: urlId, title: "Loading..." }}
+                    activeDoc={currentDoc || { id: urlId, name: "Loading..." }}
                     onRenameDoc={handleRenameDoc}
                     saveStatus={saveStatus}
                   />
