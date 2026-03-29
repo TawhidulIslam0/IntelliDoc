@@ -162,7 +162,7 @@ const FileItem = ({ doc, onOpenDoc, onDeleteFile, onDownloadFile, isRecentDoc })
   );
 };
 
-const DashBoard = ({ onCreateDoc }) => {
+const DashBoard = ({ setDocuments }) => {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [file, setFile] = useState(null);
@@ -264,10 +264,13 @@ const DashBoard = ({ onCreateDoc }) => {
         currentFolderId
       );
 
-      if (onCreateDoc) onCreateDoc();
-
       // use correct id field safely
       const docId = newDoc.file_id || newDoc.id;
+
+      // Sync local state in App.jsx so the "Bouncer" sees the document
+      if (setDocuments) {
+        setDocuments(prev => [...prev, { ...newDoc, id: docId, profileId: currentProfile.id }]);
+      }
 
       navigate(`/editor/${docId}`);
 
