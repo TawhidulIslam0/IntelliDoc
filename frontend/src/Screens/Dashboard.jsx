@@ -1,6 +1,7 @@
+/* eslint-disable no-undef */
 import React, { useEffect, useState, useContext, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { uploadFile, getPreviewUrl, deleteFile } from "../api/fileService"; 
+import { uploadFile, getPreviewUrl, deleteFile, createBlankDoc } from "../api/fileService"; 
 import { getFolders, createFolder, deleteFolder } from "../api/folderService";
 import uploadIcon from "../assets/uploadbutton.png";
 import folderIcon from "../assets/folderbutton.png";
@@ -8,6 +9,11 @@ import deleteFileIcon from "../assets/deletefilebutton.png";
 import downloadIcon from "../assets/downloadfilebutton.png";
 import deleteFolderIcon from "../assets/deletefolderbutton.png";
 import { ProfileContext } from "../UI/ProfileContext"; 
+
+// Helper function to remove .idoc extension for display
+const formatDisplayName = (name) => {
+  return name.replace(/\.idoc$/, "");
+};
 
 // Sub-component for Folder to handle individual hover state
 const FolderItem = ({ folder, onFolderClick, onDeleteFolder }) => {
@@ -30,8 +36,7 @@ const FolderItem = ({ folder, onFolderClick, onDeleteFolder }) => {
         position: "relative",
         transition: "background-color 0.1s",
       }}
-    >
-      {/* Delete Folder Button - Only shows on hover */}
+    > {/* Delete Folder Button - Only shows on hover */}
       {isHovered && (
         <img
           src={deleteFolderIcon}
@@ -61,7 +66,7 @@ const FolderItem = ({ folder, onFolderClick, onDeleteFolder }) => {
 };
 
 // Sub-component for File to handle individual hover state
-const FileItem = ({ doc, onOpenDoc, onDeleteFile, onDownloadFile }) => {
+const FileItem = ({ doc, onOpenDoc, onDeleteFile, onDownloadFile, isRecentDoc }) => {
   const [isHovered, setIsHovered] = useState(false);
   return (
     <div
@@ -75,8 +80,7 @@ const FileItem = ({ doc, onOpenDoc, onDeleteFile, onDownloadFile }) => {
         backgroundColor: isHovered ? "#e8f0fe" : "transparent", 
         transition: "background-color 0.2s"
       }} 
-    >
-      {/* Delete button - shows on hover */}
+    >{/* Delete button - shows on hover */}
       {isHovered && (
         <img
           src={deleteFileIcon}
@@ -96,9 +100,8 @@ const FileItem = ({ doc, onOpenDoc, onDeleteFile, onDownloadFile }) => {
           }}
         />
       )}
-
-      {/* Download button - shows on hover */}
-      {isHovered && (
+     {/* Download button - shows on hover */}
+      {isHovered && !isRecentDoc && (
         <img
           src={downloadIcon}
           alt="Download"
@@ -132,7 +135,7 @@ const FileItem = ({ doc, onOpenDoc, onDeleteFile, onDownloadFile }) => {
           }}
         >
           <span style={{ fontSize: 16, fontWeight: 600, color: isHovered ? "#4285f4" : "#202124" }}>
-            {doc.mime_type === "application/pdf" ? "PDF" : "TXT"}
+            {isRecentDoc ? "DOC" : (doc.mime_type === "application/pdf" ? "PDF" : "FILE")}
           </span>
         </div>
 
@@ -147,11 +150,11 @@ const FileItem = ({ doc, onOpenDoc, onDeleteFile, onDownloadFile }) => {
               color: isHovered ? "#1967d2" : "#202124"  
             }}
           >
-            {doc.name}
+            {isRecentDoc ? formatDisplayName(doc.name) : doc.name}
           </div>
 
           <div style={{ fontSize: 12, color: "#5f6368" }}>
-            {(doc.size_bytes / 1024).toFixed(1)} KB
+            {isRecentDoc ? "IntelliDoc" : `${(doc.size_bytes / 1024).toFixed(1)} KB`}
           </div>
         </div>
       </div>
@@ -168,17 +171,17 @@ const DashBoard = ({ onCreateDoc }) => {
   const [folders, setFolders] = useState([]);
   const [folderStack, setFolderStack] = useState([]);
   const [previewUrl, setPreviewUrl] = useState(null);
-
-  // Derive currentFolderId from the top of the folderStack
+   // Derive currentFolderId from the top of the folderStack
   const currentFolderId = folderStack.length > 0 ? folderStack[folderStack.length - 1].id : null;
-
   // State to handle hover for the "Blank document" card
   const [isNewDocHovered, setIsNewDocHovered] = useState(false);
-
   // Extract loading state from ProfileContext to prevent premature rendering
   const { currentProfile, loading: profilesLoading } = useContext(ProfileContext); 
 
-  // Fetch user on mount
+  const recentDocs = fetchedDocuments.filter(doc => doc.name.endsWith(".idoc"));
+  const uploadedFiles = fetchedDocuments.filter(doc => !doc.name.endsWith(".idoc"));
+
+ // Fetch user on mount
   useEffect(() => {
     const initialize = async () => {
       const token = localStorage.getItem("token");
@@ -205,7 +208,7 @@ const DashBoard = ({ onCreateDoc }) => {
     initialize();
   }, [navigate]);
 
-  // Fetch folders for current profile
+// Fetch folders for current profile
   const fetchFolders = useCallback(async () => {
     if (!currentProfile) return;
     try {
@@ -217,7 +220,7 @@ const DashBoard = ({ onCreateDoc }) => {
     }
   }, [currentProfile, currentFolderId]);
 
-  // Fetch files for current folder and profile
+// Fetch files for current folder and profile
   const fetchFiles = useCallback(
     async (folderId = null) => {
       if (!currentProfile) return;
@@ -244,7 +247,7 @@ const DashBoard = ({ onCreateDoc }) => {
     [currentProfile, currentFolderId]
   );
 
-  // Added currentFolderId to dependency array to trigger refresh on navigation
+// Added currentFolderId to dependency array to trigger refresh on navigation
   useEffect(() => {
     if (!currentProfile) return;
     fetchFolders();
@@ -252,19 +255,40 @@ const DashBoard = ({ onCreateDoc }) => {
   }, [currentProfile, currentFolderId, fetchFolders, fetchFiles]);
 
   // Create blank document
-  const handleNewDocument = () => {
-    onCreateDoc();
-    navigate("/editor");
+  const handleNewDocument = async () => {
+    try {
+      if (!currentProfile) return;
+      const newDoc = await createBlankDoc(
+        "Untitled Document.idoc", 
+        currentProfile.id, 
+        currentFolderId
+      );
+
+      if (onCreateDoc) onCreateDoc();
+
+      // use correct id field safely
+      const docId = newDoc.file_id || newDoc.id;
+
+      navigate(`/editor/${docId}`);
+
+    } catch (err) {
+      console.error("Failed to create document:", err);
+      alert("Could not start a new document. Please try again.");
+    }
   };
 
-  // Preview file
-  const handleOpenExistingDoc = async (doc) => {
-    try {
-      const { url } = await getPreviewUrl(doc.id);
-      setPreviewUrl(url);
-    } catch (err) {
-      console.error(err);
-      alert("Failed to preview file");
+ // Preview file
+  const handleOpenDoc = async (doc) => {
+    if (doc.name.endsWith(".idoc")) {
+      navigate(`/editor/${doc.id}`);
+    } else {
+      try {
+        const { url } = await getPreviewUrl(doc.id);
+        setPreviewUrl(url);
+      } catch (err) {
+        console.error(err);
+        alert("Failed to preview file");
+      }
     }
   };
 
@@ -274,11 +298,10 @@ const DashBoard = ({ onCreateDoc }) => {
 
     try {
       await deleteFile(fileId);
-
       // Remove file from UI 
       setFetchedDocuments((prev) => prev.filter((file) => file.id !== fileId));
     } catch (err) {
-      console.error(err);
+      errors.error(err);
       alert("Failed to delete file");
     }
   };
@@ -288,16 +311,16 @@ const DashBoard = ({ onCreateDoc }) => {
     try {
       const token = localStorage.getItem("token");
       if (!token) throw new Error("No auth token found");
-
+      
       // Request download URL from backend
       const res = await fetch(`http://localhost:8000/api/files/${fileId}/download`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
       if (!res.ok) throw new Error("Failed to get download URL");
-
-      //  Use the correct key returned by backend
-      const { url } = await res.json(); //  backend returns  url: presigned_url 
+      
+      // Use the correct key returned by backend
+      const { url } = await res.json(); // backend returns url: presigned_url 
 
       // Fetch actual file from S3 using presigned URL
       const fileResp = await fetch(url);
@@ -346,13 +369,12 @@ const DashBoard = ({ onCreateDoc }) => {
     setFile(selectedFile);
   };
 
-  // Upload file
+ // Upload file
   const handleUpload = async () => {
     if (!file) return alert("Please select a file first.");
 
     try {
       setUploading(true);
-      // Added currentProfile.id to the upload parameters
       await uploadFile(file, currentProfile.id, currentFolderId);
 
       alert("File uploaded successfully");
@@ -367,13 +389,12 @@ const DashBoard = ({ onCreateDoc }) => {
     }
   };
 
-  // Create folder
+ // Create folder
   const handleCreateFolder = async () => {
     const name = prompt("Enter folder name");
     if (!name) return;
 
     try {
-      // Added currentProfile.id and currentFolderId (as parent)
       await createFolder(name, currentProfile.id, currentFolderId);
       fetchFolders();
     } catch (err) {
@@ -382,27 +403,30 @@ const DashBoard = ({ onCreateDoc }) => {
     }
   };
 
-  // Open folder
+ // Open folder
   const handleFolderClick = (folder) => {
     setFolderStack((prev) => [...prev, folder]);
   };
 
-  // Go back one folder
+// Go back one folder
   const handleGoBack = () => {
     setFolderStack((prev) => prev.slice(0, -1));
   };
-  
-  // Delete folder
+
+    // Delete folder
   const handleDeleteFolder = async (folderId) => {
     if (!window.confirm("Delete this folder?")) return;
 
     try {
       await deleteFolder(folderId, currentProfile.id);
-
       // Remove from UI immediately
       setFolders((prev) =>
         prev.filter((folder) => folder.id !== folderId)
       );
+
+      if (currentFolderId === folderId) {
+        handleGoBack();
+      }
 
     } catch (err) {
       console.error(err);
@@ -470,11 +494,22 @@ const DashBoard = ({ onCreateDoc }) => {
         </div>
       </div>
 
-      {/* Folders */}
       <div style={{ flex: 1, padding: 20 }}>
         <div style={{ maxWidth: 850, margin: "0 auto" }}>
-          {/* Breadcrumb Navigation */}
+          
+          {/* Recent documents */}
+          <span style={{ fontWeight: 500, fontSize: 16 }}>Recent documents</span>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 150px)", gap: 25, marginTop: 20, marginBottom: 40 }}>
+            {recentDocs.length === 0 ? (
+              <div style={{ color: "#5f6368", fontSize: 13 }}>No recent documents.</div>
+            ) : (
+              recentDocs.map((doc) => (
+                <FileItem key={doc.id} doc={doc} onOpenDoc={handleOpenDoc} onDeleteFile={handleDeleteFile} isRecentDoc={true} />
+              ))
+            )}
+          </div>
 
+          {/* Breadcrumb Navigation */}
           <div
             style={{
               marginBottom: 15,
@@ -567,7 +602,7 @@ const DashBoard = ({ onCreateDoc }) => {
             Files
           </span>
 
-          {fetchedDocuments.length === 0 ? (
+          {uploadedFiles.length === 0 ? (
             <div
               style={{
                 marginTop: 20,
@@ -575,7 +610,7 @@ const DashBoard = ({ onCreateDoc }) => {
                 color: "#5f6368",
               }}
             >
-              No documents yet. Upload your first document.
+              No files yet. Upload your first file.
             </div>
           ) : (
             <div
@@ -586,13 +621,14 @@ const DashBoard = ({ onCreateDoc }) => {
                 marginTop: 20,
               }}
             >
-              {fetchedDocuments.map((doc) => (
+              {uploadedFiles.map((doc) => (
                 <FileItem 
                   key={doc.id}
                   doc={doc}
-                  onOpenDoc={handleOpenExistingDoc}
+                  onOpenDoc={handleOpenDoc}
                   onDeleteFile={handleDeleteFile}
                   onDownloadFile={handleDownloadFile}
+                  isRecentDoc={false}
                 />
               ))}
             </div>
