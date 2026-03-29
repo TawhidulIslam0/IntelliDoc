@@ -14,20 +14,22 @@ export default function EditorNavbar({
   // Local input state for document name (UI-only state)
   const [displayName, setDisplayName] = useState("");
 
-  // Sync navbar input when switching documents
+  // Sync navbar input when switching documents or after a rename is confirmed
   useEffect(() => {
-    if (activeDoc?.title || activeDoc?.name) {
-      setDisplayName((activeDoc.title || activeDoc.name).replace(/\.idoc$/, ""));
-    }
+    const nameToDisplay = activeDoc?.name || activeDoc?.title || "";
+    setDisplayName(nameToDisplay.replace(/\.idoc$/, ""));
   }, [activeDoc]);
 
-  // Handle user renaming document in navbar
+  // Update local UI immediately while typing (No API calls yet)
   const handleChange = (e) => {
-    const newName = e.target.value;
-    setDisplayName(newName);
+    setDisplayName(e.target.value);
+  };
 
-    // Keep backend format consistent with .idoc extension
-    onRenameDoc(`${newName}.idoc`);
+  //trigger the backend save when the user clicks away (Blur) or presses Enter
+  const handleFinalizeRename = () => {
+    const trimmedName = displayName.trim();
+    if (!trimmedName) return;
+    onRenameDoc(`${trimmedName}.idoc`);
   };
 
   return (
@@ -62,6 +64,10 @@ export default function EditorNavbar({
             <input
               value={displayName}
               onChange={handleChange}
+              onBlur={handleFinalizeRename} // SAVE TO DATABASE HERE
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.target.blur(); // Triggers onBlur logic
+              }}
               placeholder="Untitled Document"
               style={{
                 fontSize: "18px",
@@ -85,7 +91,7 @@ export default function EditorNavbar({
             }}>
               {saveStatus === "saving" && "Saving..."}
               {saveStatus === "saved" && "☁ saved"}
-              {saveStatus === "error" && "⚠ offline"}
+              {saveStatus === "error" && "⚠ error"}
             </div>
           </div>
         )}
