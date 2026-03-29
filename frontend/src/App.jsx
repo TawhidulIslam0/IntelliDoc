@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useEffect, useState, useContext } from "react";
-import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import {Routes, Route, Navigate, useNavigate, useLocation} from "react-router-dom";
 
 import DashboardNavbar from "./UI/DashboardNavbar";
 import EditorNavbar from "./UI/EditorNavbar";
@@ -15,17 +15,15 @@ import OAuthSuccess from "./Screens/OAuthSuccess";
 import ProtectedRoute from "./auth/ProtectedRoute";
 
 import { ProfileContext } from "./UI/ProfileContext";
-import { createBlankDoc } from "./api/fileService"; 
 
 export default function App() {
-  const { currentProfile, loading: profileLoading } = useContext(ProfileContext);
+  const { currentProfile, loading: profileLoading } =
+    useContext(ProfileContext);
 
-  // Local state for documents 
   const [documents, setDocuments] = useState(() => {
     return JSON.parse(localStorage.getItem("documents")) || [];
   });
 
-  // Track the document currently being edited
   const [activeDoc, setActiveDoc] = useState(() => {
     return JSON.parse(sessionStorage.getItem("activeDoc")) || null;
   });
@@ -35,12 +33,15 @@ export default function App() {
   const [saveStatus, setSaveStatus] = useState("saved");
 
   const navigate = useNavigate();
+  const location = useLocation();
 
-  // Keep LocalStorage in sync for persistence
+  // Persist documents
   useEffect(() => {
     localStorage.setItem("documents", JSON.stringify(documents));
   }, [documents]);
 
+
+  // Persist active document
   useEffect(() => {
     if (activeDoc) {
       sessionStorage.setItem("activeDoc", JSON.stringify(activeDoc));
@@ -49,19 +50,23 @@ export default function App() {
     }
   }, [activeDoc]);
 
-  // Fetch current user on mount
+  // Fetch user
   useEffect(() => {
     const fetchCurrentUser = async () => {
       const token = localStorage.getItem("token");
+
       if (!token) {
         setLoading(false);
         return;
       }
+
       try {
         const res = await fetch("http://127.0.0.1:8000/api/users/me", {
           headers: { Authorization: `Bearer ${token}` },
         });
+
         if (!res.ok) throw new Error("Failed to fetch user");
+
         const data = await res.json();
         setCurrentUser(data);
       } catch (err) {
@@ -72,66 +77,63 @@ export default function App() {
         setLoading(false);
       }
     };
+
     fetchCurrentUser();
   }, [navigate]);
 
-  // If profile changes, close any active doc from the old profile
+
+  // Doc finder
+  const getDocById = (docId) => {
+    return documents.find(
+      (d) => (String(d.id) || String(d.file_id)) === String(docId)
+    );
+  };
+
+
+  // Sync activeDoc from URL
+  const urlId = location.pathname.split("/editor/")[1];
+
   useEffect(() => {
-    if (activeDoc && activeDoc.profileId !== currentProfile?.id) {
-      setActiveDoc(null);
+    if (!urlId || !documents.length) return;
+
+    const doc = getDocById(urlId);
+
+    if (doc) {
+      setActiveDoc(doc);
     }
-  }, [currentProfile, activeDoc]);
+  }, [urlId, documents]);
 
-  // Create Documents
-  const handleCreateDoc = async () => {
-    if (!currentProfile) return;
-
-    try {
-      setSaveStatus("saving");
-      
-      //  Create entry in Database and S3
-      const result = await createBlankDoc("Untitled Document.idoc", currentProfile.id);
-      
-      // Handle the UUID returned by your FastAPI backend
-      const serverId = result.file_id || result.id;
-
-      const newDoc = {
-        id: serverId,
-        title: "Untitled Document",
-        createdAt: new Date().toLocaleDateString(),
-        profileId: currentProfile.id,
-        profileName: currentProfile.name,
-        content: { pages: [""] },
-      };
-
-      // Set as Active 
-      setActiveDoc(newDoc);
-      setSaveStatus("saved");
-      
-      // Navigate directly to the editor using the new ID
-      navigate(`/editor/${serverId}`);
-    } catch (err) {
-      console.error("Failed to create document on server:", err);
-      setSaveStatus("error");
-      alert("Error: Could not create document on the server.");
-    }
-  };
-
+  // Open document from dashboard
   const handleOpenDoc = (doc) => {
-    setActiveDoc(doc);
-    navigate(`/editor/${doc.id}`);
+    const docId = doc.id || doc.file_id;
+
+    if (!docId) {
+      console.error("Invalid document:", doc);
+      return;
+    }
+
+    const fullDoc = getDocById(docId) || doc;
+
+    setActiveDoc(fullDoc);
+    navigate(`/editor/${docId}`);
   };
 
+  // Rename document
   const handleRenameDoc = (newTitle) => {
     if (!activeDoc) return;
+
     setSaveStatus("saving");
 
-    // Update local states
+    const docId = activeDoc.id || activeDoc.file_id;
+
     setDocuments((prevDocs) =>
       prevDocs.map((doc) =>
-        doc.id === activeDoc.id ? { ...doc, title: newTitle } : doc
+        (doc.id || doc.file_id) === docId
+          ? { ...doc, title: newTitle }
+          : doc
       )
     );
+
     setActiveDoc((prev) =>
       prev ? { ...prev, title: newTitle } : prev
     );
@@ -139,14 +141,22 @@ export default function App() {
     setTimeout(() => setSaveStatus("saved"), 800);
   };
 
+  // Landing redirect
   const Landing = () => {
     if (!currentUser) return <Navigate to="/login" replace />;
     return <Navigate to="/dashboard" replace />;
   };
 
   if (loading || profileLoading) {
-    return <div style={{ padding: 40, fontFamily: "sans-serif" }}>Loading Profile...</div>;
+    return (
+      <div style={{ padding: 40, fontFamily: "sans-serif" }}>
+        Loading Profile...
+      </div>
+    );
   }
+
+  // Determine current document based on URL or State
+  const currentDoc = getDocById(urlId) || activeDoc;
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
@@ -155,8 +165,8 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/oauth-success" element={<OAuthSuccess />} />
-        
-        {/* DASHBOARD ROUTE */}
+
+        {/* DASHBOARD */}
         <Route
           path="/dashboard"
           element={
@@ -167,25 +177,25 @@ export default function App() {
                   documents={documents.filter(
                     (doc) => doc.profileId === currentProfile?.id
                   )}
-                  onCreateDoc={handleCreateDoc}
                   onOpenDoc={handleOpenDoc}
                   user={currentUser}
-                  setDocuments={setDocuments} 
+                  setDocuments={setDocuments}
                 />
               </>
             </ProtectedRoute>
           }
         />
 
-        {/* EDITOR ROUTE */}
+        {/* EDITOR */}
         <Route
           path="/editor/:id"
           element={
             <ProtectedRoute>
-              {activeDoc?.id && currentProfile ? (
+              {/*  check for currentProfile and EITHER a doc or a URL ID  */}
+              {currentProfile && (currentDoc || urlId) ? (
                 <>
                   <EditorNavbar
-                    activeDoc={activeDoc}
+                    activeDoc={currentDoc || { id: urlId, title: "Loading..." }}
                     onRenameDoc={handleRenameDoc}
                     saveStatus={saveStatus}
                   />
@@ -193,9 +203,9 @@ export default function App() {
                   <div style={{ display: "flex", flex: 1 }}>
                     <Sidebar />
                     <Editor
-                      document={activeDoc}
+                      document={currentDoc || { id: urlId }}
                       setSaveStatus={setSaveStatus}
-                      setActiveDoc={setActiveDoc}   
+                      setActiveDoc={setActiveDoc}
                     />
                   </div>
                 </>
