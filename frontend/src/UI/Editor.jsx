@@ -9,10 +9,12 @@ const PADDING = 96;
 export default function Editor({ document: doc, setSaveStatus }) {
   const containerRef = useRef(null);
   const saveTimeoutRef = useRef(null);
+
   // Keep track of the last saved ID to prevent reloading the same doc
   const lastLoadedId = useRef(null);
+  const docId = doc?.id || doc?.file_id;
 
-  // Auto Save  
+  // Auto Save
   const triggerAutoSave = () => {
     setSaveStatus("saving");
 
@@ -20,25 +22,27 @@ export default function Editor({ document: doc, setSaveStatus }) {
 
     saveTimeoutRef.current = setTimeout(async () => {
       try {
-        if (!doc?.id) return;
+        if (!docId) return;
 
         const token = localStorage.getItem("token");
-        const allPages = containerRef.current.querySelectorAll("[contentEditable]");
-        
-        // Use innerText to preserve line breaks
-        const pages = Array.from(allPages).map(p => p.innerText ?? "");
+        const allPages =
+          containerRef.current.querySelectorAll("[contentEditable]");
 
-        const res = await fetch(`http://localhost:8000/api/files/${doc.id}/content`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
-          },
-          //  Wrap the pages array in a 'content' object to match Pydantic
-          body: JSON.stringify({
-            content: { pages: pages }
-          })
-        });
+        const pages = Array.from(allPages).map((p) => p.innerText ?? "");
+
+        const res = await fetch(
+          `http://localhost:8000/api/files/${docId}/content`,
+          {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              content: { pages: pages },
+            }),
+          }
+        );
 
         if (!res.ok) {
           const errorData = await res.json();
@@ -54,7 +58,7 @@ export default function Editor({ document: doc, setSaveStatus }) {
     }, 1500);
   };
 
-  // Dom page generation
+  // DOM page generation
   const createPage = (initialContent = "", index) => {
     if (!containerRef.current) return;
 
@@ -75,7 +79,11 @@ export default function Editor({ document: doc, setSaveStatus }) {
     pageNumber.style.transform = "translateX(-50%)";
     pageNumber.style.color = "#70757a";
     pageNumber.style.fontSize = "11px";
-    pageNumber.innerText = (index !== undefined ? index + 1 : containerRef.current.children.length + 1);
+    pageNumber.innerText =
+      index !== undefined
+        ? index + 1
+        : containerRef.current.children.length + 1;
+
     page.appendChild(pageNumber);
 
     const editable = document.createElement("div");
@@ -92,8 +100,7 @@ export default function Editor({ document: doc, setSaveStatus }) {
     editable.style.overflow = "hidden";
     editable.style.whiteSpace = "pre-wrap";
     editable.style.wordBreak = "break-word";
-    
-    //  fallback to empty string if null/undefined
+
     editable.innerText = initialContent || "";
 
     editable.addEventListener("input", () => {
@@ -118,31 +125,42 @@ export default function Editor({ document: doc, setSaveStatus }) {
     while (el.scrollHeight > PAGE_HEIGHT) {
       const lines = el.innerText.split("\n");
       if (lines.length === 0) break;
+
       const overflowLine = lines.pop();
       el.innerText = lines.join("\n");
+
       const parentPage = el.parentElement;
       let nextPage = parentPage.nextSibling;
       let nextEditable;
+
       if (!nextPage) {
         nextEditable = createPage();
       } else {
         nextEditable = nextPage.querySelector("[contentEditable]");
       }
-      nextEditable.innerText = overflowLine + "\n" + nextEditable.innerText;
+
+      nextEditable.innerText =
+        overflowLine + "\n" + nextEditable.innerText;
+
       placeCursorAtStart(nextEditable);
     }
   };
 
   const handleMergeBackspace = (el, e) => {
     if (!isCursorAtStart(el)) return;
+
     const parentPage = el.parentElement;
     const prevPage = parentPage.previousSibling;
     if (!prevPage) return;
+
     const prevEditable = prevPage.querySelector("[contentEditable]");
     const currentText = el.innerText;
+
     if (currentText.trim() !== "") {
-      prevEditable.innerText += (prevEditable.innerText ? "\n" : "") + currentText;
+      prevEditable.innerText +=
+        (prevEditable.innerText ? "\n" : "") + currentText;
     }
+
     parentPage.remove();
     placeCursorAtEnd(prevEditable);
     e.preventDefault();
@@ -151,58 +169,73 @@ export default function Editor({ document: doc, setSaveStatus }) {
   const isCursorAtStart = (el) => {
     const selection = window.getSelection();
     if (!selection || !selection.rangeCount) return false;
+
     const range = selection.getRangeAt(0);
     if (!el.contains(range.startContainer)) return false;
+
     const testRange = document.createRange();
     testRange.selectNodeContents(el);
     testRange.setEnd(range.startContainer, range.startOffset);
+
     return testRange.toString().replace(/\n/g, "").length === 0;
   };
 
   const placeCursorAtStart = (el) => {
     const range = document.createRange();
     const sel = window.getSelection();
+
     range.setStart(el, 0);
     range.collapse(true);
+
     sel.removeAllRanges();
     sel.addRange(range);
+
     el.focus();
   };
 
   const placeCursorAtEnd = (el) => {
     const range = document.createRange();
     const sel = window.getSelection();
+
     range.selectNodeContents(el);
     range.collapse(false);
+
     sel.removeAllRanges();
     sel.addRange(range);
+
     el.focus();
   };
 
   // Load content from backend
   useEffect(() => {
     const loadContent = async () => {
-      if (!doc?.id || lastLoadedId.current === doc.id) return;
+      if (!docId || lastLoadedId.current === docId) return;
 
       try {
-        setSaveStatus("saving"); 
+        setSaveStatus("saving");
+
         const token = localStorage.getItem("token");
-        
-        const res = await fetch(`http://localhost:8000/api/files/${doc.id}/content`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+
+        const res = await fetch(
+          `http://localhost:8000/api/files/${docId}/content`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
 
         if (res.ok) {
           const data = await res.json();
-          // backend returns { "content": { "pages": [...] } }
+
           const serverPages = data.content?.pages || [""];
-          
+
           if (containerRef.current) {
             containerRef.current.innerHTML = "";
-            serverPages.forEach((content, idx) => createPage(content, idx));
+            serverPages.forEach((content, idx) =>
+              createPage(content, idx)
+            );
           }
-          
-          lastLoadedId.current = doc.id;
+
+          lastLoadedId.current = docId;
           setSaveStatus("saved");
         } else {
           if (containerRef.current) {
@@ -222,7 +255,7 @@ export default function Editor({ document: doc, setSaveStatus }) {
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
-  }, [doc?.id]); 
+  }, [docId]);
 
   return (
     <main
