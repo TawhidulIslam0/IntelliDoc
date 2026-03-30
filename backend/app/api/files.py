@@ -220,13 +220,14 @@ async def create_blank_doc(
     }
 
 
-# List files for current user, optionally filtered by folder
+# List files for current user, optionally filtered by folder OR searched by name/type
 @router.get("/")
 async def list_files(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
     profile_id: Optional[uuid.UUID] = None,
-    folder_id: Optional[uuid.UUID] = None
+    folder_id: Optional[uuid.UUID] = None,
+    search: Optional[str] = None
 ):
     # Default to default profile if none provided
     if not profile_id:
@@ -240,12 +241,38 @@ async def list_files(
             raise HTTPException(status_code=404, detail="Default profile not found")
         profile_id = profile.id
 
-    # Fetch files for user/profile/folder
+    # Base query: must belong to the user and the selected profile
     stmt = select(File).where(
         File.owner_id == current_user.id,
-        File.profile_id == profile_id,
-        File.folder_id == folder_id
+        File.profile_id == profile_id
     )
+
+    # Search logic
+    if search:
+        search_query = search.lower().strip()
+        
+        # Handle "type:" filters for specific extensions
+        if search_query.startswith("type:"):
+            file_type = search_query.replace("type:", "")
+            if file_type == "document":
+                # Matches your custom .idoc files
+                stmt = stmt.where(File.name.ilike("%.idoc"))
+            elif file_type == "pdf":
+                stmt = stmt.where(File.name.ilike("%.pdf"))
+            elif file_type == "txt":
+                stmt = stmt.where(File.name.ilike("%.txt"))
+            elif file_type == "folder":
+                
+                return []  # This returns an empty list for files, as folders are handled 
+        else:
+            # Global Name Search: Find matches anywhere in the profile
+            stmt = stmt.where(File.name.ilike(f"%{search_query}%"))
+    else:
+        # Folder Navigation: Only show files in the specific folder
+        stmt = stmt.where(File.folder_id == folder_id)
+
+    # Order by most recently updated 
+    stmt = stmt.order_by(File.updated_at.desc())
 
     files = db.scalars(stmt).all()
 
@@ -256,11 +283,12 @@ async def list_files(
             "size_bytes": file.size_bytes,
             "mime_type": file.mime_type,
             "folder_id": str(file.folder_id) if file.folder_id else None,
-            "created_at": file.created_at
+            "created_at": file.created_at,
+            "updated_at": file.updated_at,
+            "status": file.status
         }
         for file in files
     ]
-
 
 # Generate presigned URL for preview
 @router.get("/{file_id}/preview")
