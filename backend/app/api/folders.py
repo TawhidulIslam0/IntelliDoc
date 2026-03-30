@@ -70,7 +70,8 @@ def get_folders(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
     profile_id: Optional[uuid.UUID] = None,
-    parent_id: Optional[uuid.UUID] = None # Added parent_id to allow filtering by current folder
+    parent_id: Optional[uuid.UUID] = None,
+    search: Optional[str] = None 
 ):
     # If no profile_id provided, default to default profile
     if not profile_id:
@@ -81,12 +82,31 @@ def get_folders(
             raise HTTPException(status_code=404, detail="Default profile not found")
         profile_id = profile.id
 
-    # Fetch folders for user & profile
+    # Base query: must belong to the user and the selected profile
     stmt = select(Folder).where(
         Folder.owner_id == current_user.id,
-        Folder.profile_id == profile_id,
-        Folder.parent_id == parent_id # Filter to only show folders inside the current parent
+        Folder.profile_id == profile_id
     )
+
+    # Search Logic
+    if search:
+        search_query = search.lower().strip()
+        
+        # Handle "type:" filters
+        if search_query == "type:folder":
+            # Show all folders in the profile if specifically filtered by 'folder'
+            pass 
+        elif search_query.startswith("type:"):
+            # If searching for a specific file type (pdf, txt, idoc), 
+           
+            return []  # return no folders so only files show up in results.
+        else:
+            # Find folders by name anywhere in this profile (Global Search)
+            stmt = stmt.where(Folder.name.ilike(f"%{search_query}%"))
+    else:
+        # Folder Navigation: Only show folders inside the current parent
+        stmt = stmt.where(Folder.parent_id == parent_id)
+
     folders = db.scalars(stmt).all()
     return folders
 
