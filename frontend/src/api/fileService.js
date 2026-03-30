@@ -1,7 +1,7 @@
 const API_URL = "http://localhost:8000/api";
 
-// Fetch list of files for the current user
-export const getFiles = async (profileId, folderId = null) => {
+// Fetch list of files for the current user - Updated to support search
+export const getFiles = async (profileId, folderId = null, search = "") => {
   const token = localStorage.getItem("token");
 
   if (!profileId) profileId = localStorage.getItem("currentProfileId"); 
@@ -9,7 +9,14 @@ export const getFiles = async (profileId, folderId = null) => {
 
   const params = new URLSearchParams();
   params.append("profile_id", profileId);
-  if (folderId) params.append("folder_id", folderId);
+
+  // If searching ignore the folder_id to perform a global search
+  // If not searching append the folder_id to navigate normally
+  if (search) {
+    params.append("search", search);
+  } else if (folderId) {
+    params.append("folder_id", folderId);
+  }
 
   const response = await fetch(`${API_URL}/files/?${params.toString()}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -91,73 +98,53 @@ export const uploadFile = async (file, profileId, folderId = null) => {
 // Preview
 export const getPreviewUrl = async (fileId, profileId) => {
   const token = localStorage.getItem("token");
-
   if (!profileId) profileId = localStorage.getItem("currentProfileId");
-
   const url = new URL(`${API_URL}/files/${fileId}/preview`);
   url.searchParams.append("profile_id", profileId);
-
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
   });
-
   if (!response.ok) throw new Error("Failed to get preview URL");
-
   return response.json();
 };
 
 // Download
 export const getDownloadUrl = async (fileId, profileId) => {
   const token = localStorage.getItem("token");
-
   if (!profileId) profileId = localStorage.getItem("currentProfileId");
-
   const url = new URL(`${API_URL}/files/${fileId}/download`);
   url.searchParams.append("profile_id", profileId);
-
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
   });
-
-  if (!response.ok) throw new Error("Failed to get download URL");
-
+  if (!response.ok) throw new Error("Failed to download URL");
   return response.json();
 };
 
 // Delete file
 export const deleteFile = async (fileId, profileId) => {
   const token = localStorage.getItem("token");
-
   if (!profileId) profileId = localStorage.getItem("currentProfileId");
-
   const url = new URL(`${API_URL}/files/${fileId}`);
   url.searchParams.append("profile_id", profileId);
-
   const response = await fetch(url, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${token}` },
   });
-
   if (!response.ok) throw new Error("Failed to delete file");
-
   return true;
 };
 
 // Download trigger
 export const downloadFile = async (fileId, fileName, profileId) => {
   const token = localStorage.getItem("token");
-
   if (!profileId) profileId = localStorage.getItem("currentProfileId");
-
   const url = new URL(`${API_URL}/files/${fileId}/download`);
   url.searchParams.append("profile_id", profileId);
-
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
   });
-
   if (!response.ok) throw new Error("Failed to download file");
-
   const data = await response.json();
   window.open(data.url, "_blank");
 };
@@ -166,9 +153,7 @@ export const downloadFile = async (fileId, fileName, profileId) => {
 export const createBlankDoc = async (name, profileId, folderId = null) => {
   const token = localStorage.getItem("token");
   const actualProfileId = profileId || localStorage.getItem("currentProfileId");
-
   if (!actualProfileId) throw new Error("No profile selected");
-
   const response = await fetch(`${API_URL}/files/create-blank-doc`, {
     method: "POST",
     headers: {
@@ -181,21 +166,17 @@ export const createBlankDoc = async (name, profileId, folderId = null) => {
       folder_id: folderId || null,
     }),
   });
-
   if (!response.ok) {
     const err = await response.text();
     console.error("create blank doc error:", err);
     throw new Error("Failed to create blank document");
   }
-
   return response.json();
 };
 
 // Auto-save
 export const updateFileContent = async (fileId, content) => {
   const token = localStorage.getItem("token");
-
-  // Normalize content into backend-safe structure
   const safeContent = {
     pages: Array.isArray(content?.pages)
       ? content.pages.map(p => p ?? "")
@@ -203,8 +184,6 @@ export const updateFileContent = async (fileId, content) => {
         ? [content]
         : [""]
   };
-  
- // Send updated document content to backend for persistence
   const response = await fetch(`${API_URL}/files/${fileId}/content`, {
     method: "PUT",
     headers: {
@@ -213,12 +192,10 @@ export const updateFileContent = async (fileId, content) => {
     },
     body: JSON.stringify({ content: safeContent }),
   });
-
   if (!response.ok) {
     const err = await response.text();
     console.error("auto-save error:", err);
     throw new Error("Failed to auto-save document");
   }
-
   return response.json();
 };
