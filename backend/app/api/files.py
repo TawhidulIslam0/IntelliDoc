@@ -137,7 +137,6 @@ async def initiate_upload(
     # Return presigned URL to client
     return InitiateUploadResponse(file_id=new_file.id, presigned_url=presigned_url)
 
-
 # Creating blank document endpoint
 @router.post("/create-blank-doc", status_code=status.HTTP_201_CREATED)
 async def create_blank_doc(
@@ -145,7 +144,7 @@ async def create_blank_doc(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)]
 ):
-    # Check profile ownership
+    #  Check profile ownership
     profile = db.scalar(
         select(Profile).where(
             Profile.id == payload.profile_id,
@@ -155,15 +154,35 @@ async def create_blank_doc(
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
 
-    # Ensure .idoc extension
-    filename = payload.name
-    if not filename.lower().endswith(".idoc"):
-        filename += ".idoc"
+    # Handle unique naming logic (Untitled Document, Untitled Document (1), etc.)
+    base_name = "Untitled Document"
+    extension = ".idoc"
+    final_name = f"{base_name}{extension}"
+    
+    counter = 1
+    while True:
+        # Check if a file with this exact name already exists in this specific folder/profile
+        existing = db.scalar(
+            select(File).where(
+                File.owner_id == current_user.id,
+                File.profile_id == payload.profile_id,
+                File.folder_id == payload.folder_id,
+                File.name == final_name
+            )
+        )
+        
+        if not existing:
+            # Name is available! Break the loop
+            break
+        
+        # Name is taken, try the next number
+        final_name = f"{base_name} ({counter}){extension}"
+        counter += 1
 
+    #  Proceed with S3 and DB insertion using final_name
     file_id = uuid.uuid4()
-    s3_key = f"uploads/{current_user.id}/{file_id}/{filename}"
+    s3_key = f"uploads/{current_user.id}/{file_id}/{final_name}"
 
-    # Create blank JSON structure in S3
     try:
         s3.put_object(
             Bucket=BUCKET_NAME,
@@ -181,7 +200,7 @@ async def create_blank_doc(
         owner_id=current_user.id,
         profile_id=payload.profile_id,
         folder_id=payload.folder_id,
-        name=filename,
+        name=final_name, 
         s3_key=s3_key,
         size_bytes=0,
         mime_type="application/json",
