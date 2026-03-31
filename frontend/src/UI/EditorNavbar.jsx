@@ -11,24 +11,34 @@ export default function EditorNavbar({
 }) {
   const navigate = useNavigate();
 
-  // Local input state for document name (UI-only state)
-  const [displayName, setDisplayName] = useState("");
+  // Initialize state directly from props 
+  const [displayName, setDisplayName] = useState(() => {
+    const initialName = activeDoc?.name || activeDoc?.title || "";
+    return initialName.replace(/\.idoc$/, "");
+  });
 
-  // Sync navbar input when switching documents or after a rename is confirmed
+  // Sync navbar input when switching documents (e.g., clicking a different doc in a sidebar)
   useEffect(() => {
-    const nameToDisplay = activeDoc?.name || activeDoc?.title || "";
-    setDisplayName(nameToDisplay.replace(/\.idoc$/, ""));
-  }, [activeDoc]);
+    if (activeDoc) {
+      const nameToDisplay = activeDoc.name || activeDoc.title || "";
+      setDisplayName(nameToDisplay.replace(/\.idoc$/, ""));
+    }
+  }, [activeDoc?.id]); // Only re-run if the unique ID changes
 
-  // Update local UI immediately while typing (No API calls yet)
+  // Update local UI immediately while typing
   const handleChange = (e) => {
     setDisplayName(e.target.value);
   };
 
-  //trigger the backend save when the user clicks away (Blur) or presses Enter
+  // Trigger the backend save when the user clicks away (Blur) or presses Enter
   const handleFinalizeRename = () => {
     const trimmedName = displayName.trim();
     if (!trimmedName) return;
+    
+    // Check if the name actually changed to avoid redundant API calls
+    const currentName = (activeDoc?.name || activeDoc?.title || "").replace(/\.idoc$/, "");
+    if (trimmedName === currentName) return;
+
     onRenameDoc(`${trimmedName}.idoc`);
   };
 
@@ -64,7 +74,7 @@ export default function EditorNavbar({
             <input
               value={displayName}
               onChange={handleChange}
-              onBlur={handleFinalizeRename} // SAVE TO DATABASE HERE
+              onBlur={handleFinalizeRename} 
               onKeyDown={(e) => {
                 if (e.key === "Enter") e.target.blur(); // Triggers onBlur logic
               }}
