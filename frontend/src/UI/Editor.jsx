@@ -209,13 +209,13 @@ export default function Editor({ document: doc, setSaveStatus }) {
   // Load content from backend
   useEffect(() => {
     const loadContent = async () => {
+      //  Don't reload if we are already looking at this document
       if (!docId || lastLoadedId.current === docId) return;
 
       try {
         setSaveStatus("saving");
 
         const token = localStorage.getItem("token");
-
         const res = await fetch(
           `http://localhost:8000/api/files/${docId}/content`,
           {
@@ -225,10 +225,10 @@ export default function Editor({ document: doc, setSaveStatus }) {
 
         if (res.ok) {
           const data = await res.json();
-
           const serverPages = data.content?.pages || [""];
 
           if (containerRef.current) {
+            // Only clear and rebuild once the data is actually here
             containerRef.current.innerHTML = "";
             serverPages.forEach((content, idx) =>
               createPage(content, idx)
@@ -238,10 +238,12 @@ export default function Editor({ document: doc, setSaveStatus }) {
           lastLoadedId.current = docId;
           setSaveStatus("saved");
         } else {
+          // If 404 or error, initialize with a blank page
           if (containerRef.current) {
             containerRef.current.innerHTML = "";
             createPage("");
           }
+          lastLoadedId.current = docId; 
           setSaveStatus("saved");
         }
       } catch (err) {
