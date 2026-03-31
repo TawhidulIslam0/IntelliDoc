@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useEffect, useState, useContext } from "react";
-import {Routes, Route, Navigate, useNavigate, useLocation} from "react-router-dom";
+import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 
 import DashboardNavbar from "./UI/DashboardNavbar";
 import EditorNavbar from "./UI/EditorNavbar";
@@ -17,8 +17,7 @@ import ProtectedRoute from "./auth/ProtectedRoute";
 import { ProfileContext } from "./UI/ProfileContext";
 
 export default function App() {
-  const { currentProfile, loading: profileLoading } =
-    useContext(ProfileContext);
+  const { currentProfile, loading: profileLoading } = useContext(ProfileContext);
 
   const [documents, setDocuments] = useState(() => {
     return JSON.parse(localStorage.getItem("documents")) || [];
@@ -40,7 +39,6 @@ export default function App() {
     localStorage.setItem("documents", JSON.stringify(documents));
   }, [documents]);
 
-
   // Persist active document
   useEffect(() => {
     if (activeDoc) {
@@ -54,7 +52,6 @@ export default function App() {
   useEffect(() => {
     const fetchCurrentUser = async () => {
       const token = localStorage.getItem("token");
-
       if (!token) {
         setLoading(false);
         return;
@@ -81,24 +78,21 @@ export default function App() {
     fetchCurrentUser();
   }, [navigate]);
 
-
-  // Doc finder
+  // Helper to find document by ID (Handles both id and file_id)
   const getDocById = (docId) => {
+    if (!docId) return null;
     return documents.find(
-      (d) => (String(d.id) || String(d.file_id)) === String(docId)
+      (d) => String(d.id || d.file_id) === String(docId)
     );
   };
 
-
-  // Sync activeDoc from URL
+  // Sync activeDoc from URL automatically
   const urlId = location.pathname.split("/editor/")[1];
 
   useEffect(() => {
     if (!urlId || !documents.length) return;
-
     const doc = getDocById(urlId);
-
-    if (doc) {
+    if (doc && (!activeDoc || String(activeDoc.id || activeDoc.file_id) !== String(urlId))) {
       setActiveDoc(doc);
     }
   }, [urlId, documents]);
@@ -106,19 +100,12 @@ export default function App() {
   // Open document from dashboard
   const handleOpenDoc = (doc) => {
     const docId = doc.id || doc.file_id;
-
-    if (!docId) {
-      console.error("Invalid document:", doc);
-      return;
-    }
-
-    const fullDoc = getDocById(docId) || doc;
-
-    setActiveDoc(fullDoc);
+    if (!docId) return;
+    setActiveDoc(doc);
     navigate(`/editor/${docId}`);
   };
 
-  // Rename document
+  // Rename document logic
   const handleRenameDoc = async (newName) => {
     if (!activeDoc || !newName.trim()) return;
 
@@ -127,7 +114,6 @@ export default function App() {
     const token = localStorage.getItem("token");
 
     try {
-      // Sync to Backend 
       const res = await fetch(`http://127.0.0.1:8000/api/files/${docId}/title`, {
         method: "PUT",
         headers: {
@@ -137,22 +123,17 @@ export default function App() {
         body: JSON.stringify({ name: newName }),
       });
 
-      if (!res.ok) throw new Error("Failed to update title on server");
+      if (!res.ok) throw new Error("Failed to update title");
 
-      // Update local list 
       setDocuments((prevDocs) =>
         prevDocs.map((doc) =>
-          (doc.id || doc.file_id) === docId
+          String(doc.id || doc.file_id) === String(docId)
             ? { ...doc, name: newName }
             : doc
         )
       );
 
-      // Update active document 
-      setActiveDoc((prev) =>
-        prev ? { ...prev, name: newName } : prev
-      );
-
+      setActiveDoc((prev) => (prev ? { ...prev, name: newName } : prev));
       setSaveStatus("saved");
     } catch (err) {
       console.error("Rename failed:", err);
@@ -160,21 +141,16 @@ export default function App() {
     }
   };
 
-  // Landing redirect
   const Landing = () => {
     if (!currentUser) return <Navigate to="/login" replace />;
     return <Navigate to="/dashboard" replace />;
   };
 
   if (loading || profileLoading) {
-    return (
-      <div style={{ padding: 40, fontFamily: "sans-serif" }}>
-        Loading Profile...
-      </div>
-    );
+    return <div style={{ padding: 40, fontFamily: "sans-serif" }}>Initializing...</div>;
   }
 
-  // Determine current document based on URL or State
+  // Determine current document
   const currentDoc = getDocById(urlId) || activeDoc;
 
   return (
@@ -185,7 +161,6 @@ export default function App() {
         <Route path="/signup" element={<Signup />} />
         <Route path="/oauth-success" element={<OAuthSuccess />} />
 
-        {/* DASHBOARD */}
         <Route
           path="/dashboard"
           element={
@@ -193,9 +168,7 @@ export default function App() {
               <>
                 <DashboardNavbar user={currentUser} />
                 <HomeScreen
-                  documents={documents.filter(
-                    (doc) => doc.profileId === currentProfile?.id
-                  )}
+                  documents={documents.filter((doc) => doc.profileId === currentProfile?.id)}
                   onOpenDoc={handleOpenDoc}
                   user={currentUser}
                   setDocuments={setDocuments}
@@ -205,16 +178,14 @@ export default function App() {
           }
         />
 
-        {/* EDITOR */}
         <Route
           path="/editor/:id"
           element={
             <ProtectedRoute>
-              {/* check for currentProfile and EITHER a doc or a URL ID  */}
               {currentProfile && (currentDoc || urlId) ? (
                 <>
                   <EditorNavbar
-                    activeDoc={currentDoc || { id: urlId, name: "Loading..." }}
+                    activeDoc={currentDoc || { id: urlId, name: "" }}
                     onRenameDoc={handleRenameDoc}
                     saveStatus={saveStatus}
                   />
