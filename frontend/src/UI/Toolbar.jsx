@@ -117,6 +117,7 @@ const Toolbar = ({ editorRef }) => {
 
   return (
     <div
+      className="toolbar"
       style={{
         height: "48px",
         backgroundColor: "#edf2fa",
@@ -145,8 +146,8 @@ const Toolbar = ({ editorRef }) => {
       <Divider />
 
       {/* History */}
-      <button style={btnStyle} onClick={() => applyCommand("undo")} title="Undo"><Undo size={18} /></button>
-      <button style={btnStyle} onClick={() => applyCommand("redo")} title="Redo"><Redo size={18} /></button>
+      <button style={btnStyle} onMouseDown={(e) => e.preventDefault()} onClick={() => applyCommand("undo")} title="Undo"><Undo size={18} /></button>
+      <button style={btnStyle} onMouseDown={(e) => e.preventDefault()} onClick={() => applyCommand("redo")} title="Redo"><Redo size={18} /></button>
       <button style={btnStyle} onClick={() => window.print()} title="Print"><Printer size={18} /></button>
 
       <Divider />
@@ -179,14 +180,14 @@ const Toolbar = ({ editorRef }) => {
 
       {/* Font Size */}
       <div style={{ display: "flex", alignItems: "center" }}>
-        <button style={btnStyle} onClick={() => updateFontSize(fontSize - 1)}>-</button>
+        <button style={btnStyle} onMouseDown={(e) => e.preventDefault()} onClick={() => updateFontSize(fontSize - 1)}>-</button>
         <input
           type="number"
           value={fontSize}
           onChange={(e) => updateFontSize(parseInt(e.target.value) || 11)}
           style={{ width: "35px", textAlign: "center", border: "1px solid #dadce0", borderRadius: "4px", margin: "0 4px", fontSize: "14px" }}
         />
-        <button style={btnStyle} onClick={() => updateFontSize(fontSize + 1)}>+</button>
+        <button style={btnStyle} onMouseDown={(e) => e.preventDefault()} onClick={() => updateFontSize(fontSize + 1)}>+</button>
       </div>
 
       <Divider />
@@ -203,23 +204,23 @@ const Toolbar = ({ editorRef }) => {
       <Divider />
 
       {/* Formatting Buttons */}
-      <button style={getBtnStyle(activeFormats.bold)} onClick={() => applyCommand("bold")} title="Bold"><Bold size={18} /></button>
-      <button style={getBtnStyle(activeFormats.italic)} onClick={() => applyCommand("italic")} title="Italic"><Italic size={18} /></button>
-      <button style={getBtnStyle(activeFormats.underline)} onClick={() => applyCommand("underline")} title="Underline"><Underline size={18} /></button>
+      <button style={getBtnStyle(activeFormats.bold)} onMouseDown={(e) => e.preventDefault()} onClick={() => applyCommand("bold")} title="Bold"><Bold size={18} /></button>
+      <button style={getBtnStyle(activeFormats.italic)} onMouseDown={(e) => e.preventDefault()} onClick={() => applyCommand("italic")} title="Italic"><Italic size={18} /></button>
+      <button style={getBtnStyle(activeFormats.underline)} onMouseDown={(e) => e.preventDefault()} onClick={() => applyCommand("underline")} title="Underline"><Underline size={18} /></button>
 
       <Divider />
 
       {/* Alignment & Lists */}
-      <button style={getBtnStyle(activeFormats.align === "left")} onClick={() => applyCommand("justifyLeft")} title="Align Left"><AlignLeft size={18} /></button>
-      <button style={getBtnStyle(activeFormats.align === "center")} onClick={() => applyCommand("justifyCenter")} title="Align Center"><AlignCenter size={18} /></button>
-      <button style={getBtnStyle(activeFormats.list === "ul")} onClick={() => applyCommand("insertUnorderedList")} title="Bulleted List"><List size={18} /></button>
-      <button style={getBtnStyle(activeFormats.list === "ol")} onClick={() => applyCommand("insertOrderedList")} title="Numbered List"><ListOrdered size={18} /></button>
+      <button style={getBtnStyle(activeFormats.align === "left")} onMouseDown={(e) => e.preventDefault()} onClick={() => applyCommand("justifyLeft")} title="Align Left"><AlignLeft size={18} /></button>
+      <button style={getBtnStyle(activeFormats.align === "center")} onMouseDown={(e) => e.preventDefault()} onClick={() => applyCommand("justifyCenter")} title="Align Center"><AlignCenter size={18} /></button>
+      <button style={getBtnStyle(activeFormats.list === "ul")} onMouseDown={(e) => e.preventDefault()} onClick={() => applyCommand("insertUnorderedList")} title="Bulleted List"><List size={18} /></button>
+      <button style={getBtnStyle(activeFormats.list === "ol")} onMouseDown={(e) => e.preventDefault()} onClick={() => applyCommand("insertOrderedList")} title="Numbered List"><ListOrdered size={18} /></button>
 
       <Divider />
 
       {/* Images / Links / Text Color */}
-      <button style={btnStyle} onClick={() => { const url = prompt("Enter Image URL:"); if (url) applyCommand("insertImage", url); }} title="Insert Image"><Image size={18} /></button>
-      <button style={btnStyle} onClick={() => { const url = prompt("Enter Link URL:"); if (url) applyCommand("createLink", url); }} title="Insert Link"><Link size={18} /></button>
+      <button style={btnStyle} onMouseDown={(e) => e.preventDefault()} onClick={() => { const url = prompt("Enter Image URL:"); if (url) applyCommand("insertImage", url); }} title="Insert Image"><Image size={18} /></button>
+      <button style={btnStyle} onMouseDown={(e) => e.preventDefault()} onClick={() => { const url = prompt("Enter Link URL:"); if (url) applyCommand("createLink", url); }} title="Insert Link"><Link size={18} /></button>
       <input type="color" onChange={(e) => applyCommand("foreColor", e.target.value)} style={{ marginLeft: "4px" }} title="Text Color" />
 
     </div>
