@@ -16,6 +16,8 @@ import ProtectedRoute from "./auth/ProtectedRoute";
 
 import { ProfileContext } from "./UI/ProfileContext";
 
+import "./UI/Print.css";
+
 export default function App() {
   const { currentProfile, loading: profileLoading } = useContext(ProfileContext);
 
@@ -78,7 +80,7 @@ export default function App() {
     fetchCurrentUser();
   }, [navigate]);
 
-  // Helper to find document by ID (Handles both id and file_id)
+  // Helper to find document by ID 
   const getDocById = (docId) => {
     if (!docId) return null;
     return documents.find(
@@ -86,7 +88,7 @@ export default function App() {
     );
   };
 
-  // Sync activeDoc from URL automatically
+  // Sync activeDoc from URL 
   const urlId = location.pathname.split("/editor/")[1];
 
   useEffect(() => {
@@ -114,6 +116,7 @@ export default function App() {
     const token = localStorage.getItem("token");
 
     try {
+       // Sync to Backend 
       const res = await fetch(`http://127.0.0.1:8000/api/files/${docId}/title`, {
         method: "PUT",
         headers: {
@@ -125,6 +128,7 @@ export default function App() {
 
       if (!res.ok) throw new Error("Failed to update title");
 
+      // Update local list 
       setDocuments((prevDocs) =>
         prevDocs.map((doc) =>
           String(doc.id || doc.file_id) === String(docId)
@@ -133,6 +137,7 @@ export default function App() {
         )
       );
 
+       // Update active document 
       setActiveDoc((prev) => (prev ? { ...prev, name: newName } : prev));
       setSaveStatus("saved");
     } catch (err) {
@@ -141,6 +146,7 @@ export default function App() {
     }
   };
 
+  // Landing redirect
   const Landing = () => {
     if (!currentUser) return <Navigate to="/login" replace />;
     return <Navigate to="/dashboard" replace />;
@@ -150,7 +156,7 @@ export default function App() {
     return <div style={{ padding: 40, fontFamily: "sans-serif" }}>Initializing...</div>;
   }
 
-  // Determine current document
+  // Determine current document based on URL or State
   const currentDoc = getDocById(urlId) || activeDoc;
 
   return (
@@ -161,6 +167,7 @@ export default function App() {
         <Route path="/signup" element={<Signup />} />
         <Route path="/oauth-success" element={<OAuthSuccess />} />
 
+        {/* DASHBOARD */}
         <Route
           path="/dashboard"
           element={
@@ -178,10 +185,12 @@ export default function App() {
           }
         />
 
+        {/* EDITOR */}
         <Route
           path="/editor/:id"
           element={
             <ProtectedRoute>
+              {/* check for currentProfile and EITHER a doc or a URL ID  */}
               {currentProfile && (currentDoc || urlId) ? (
                 <>
                   <EditorNavbar
