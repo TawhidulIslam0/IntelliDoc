@@ -64,6 +64,7 @@ export default function Sidebar() {
 
   return (
     <aside
+      className="sidebar" /* Added this to match Print.css */
       style={{
         width: "240px",
         backgroundColor: "#f8f9fa",
@@ -94,6 +95,7 @@ export default function Sidebar() {
 
             <div style={{ position: "relative" }}>
               <button
+                onMouseDown={(e) => e.preventDefault()} /* Keeps focus on doc */
                 onClick={(e) => {
                   e.stopPropagation();
                   setMenuOpenId(menuOpenId === tab.id ? null : tab.id);
@@ -117,7 +119,6 @@ export default function Sidebar() {
                     minWidth: "160px",
                   }}
                 >
-                  {/* Tab 1 menu */}
                   {tab.id === 1 ? (
                     <>
                       <div style={{ padding: "6px 12px", cursor: "pointer", borderBottom: "1px solid #E5E7EB" }} onClick={() => addSubtab(tab.id)}>Add Subtab</div>
@@ -153,6 +154,7 @@ export default function Sidebar() {
       ))}
 
       <button
+        onMouseDown={(e) => e.preventDefault()} /* Keeps focus on doc */
         onClick={addTab}
         style={{
           marginTop: "8px",
