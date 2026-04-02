@@ -10,11 +10,10 @@ export default function Editor({ document: doc, setSaveStatus }) {
   const containerRef = useRef(null);
   const saveTimeoutRef = useRef(null);
 
-  // Keep track of the last saved ID to prevent reloading the same doc
   const lastLoadedId = useRef(null);
   const docId = doc?.id || doc?.file_id;
 
-  // Auto Save
+  // Auto Save 
   const triggerAutoSave = () => {
     setSaveStatus("saving");
 
@@ -25,10 +24,10 @@ export default function Editor({ document: doc, setSaveStatus }) {
         if (!docId) return;
 
         const token = localStorage.getItem("token");
-        const allPages =
-          containerRef.current.querySelectorAll("[contentEditable]");
+        const allPages = containerRef.current.querySelectorAll("[contentEditable]");
 
-        const pages = Array.from(allPages).map((p) => p.innerText ?? "");
+        //  map to innerHTML to save all font/style tags
+        const pages = Array.from(allPages).map((p) => p.innerHTML ?? "");
 
         const res = await fetch(
           `http://localhost:8000/api/files/${docId}/content`,
@@ -44,11 +43,7 @@ export default function Editor({ document: doc, setSaveStatus }) {
           }
         );
 
-        if (!res.ok) {
-          const errorData = await res.json();
-          console.error("Backend Error:", errorData);
-          throw new Error("Server failed to save");
-        }
+        if (!res.ok) throw new Error("Server failed to save");
 
         setSaveStatus("saved");
       } catch (err) {
@@ -58,7 +53,6 @@ export default function Editor({ document: doc, setSaveStatus }) {
     }, 1500);
   };
 
-  // DOM page generation
   const createPage = (initialContent = "", index) => {
     if (!containerRef.current) return;
 
@@ -94,14 +88,13 @@ export default function Editor({ document: doc, setSaveStatus }) {
     editable.style.outline = "none";
     editable.style.fontSize = "15px";
     editable.style.lineHeight = "1.5";
-    editable.style.fontFamily = "Arial, sans-serif";
     editable.style.color = "#202124";
     editable.style.boxSizing = "border-box";
     editable.style.overflow = "hidden";
-    editable.style.whiteSpace = "pre-wrap";
     editable.style.wordBreak = "break-word";
 
-    editable.innerText = initialContent || "";
+    // Inject as innerHTML to render saved styles
+    editable.innerHTML = initialContent || "<div><br></div>";
 
     editable.addEventListener("input", () => {
       handleInput(editable);
@@ -120,15 +113,9 @@ export default function Editor({ document: doc, setSaveStatus }) {
     return editable;
   };
 
-  // Input handling
   const handleInput = (el) => {
-    while (el.scrollHeight > PAGE_HEIGHT) {
-      const lines = el.innerText.split("\n");
-      if (lines.length === 0) break;
-
-      const overflowLine = lines.pop();
-      el.innerText = lines.join("\n");
-
+    // Basic overflow handling using innerHTML
+    if (el.scrollHeight > PAGE_HEIGHT) {
       const parentPage = el.parentElement;
       let nextPage = parentPage.nextSibling;
       let nextEditable;
@@ -139,10 +126,11 @@ export default function Editor({ document: doc, setSaveStatus }) {
         nextEditable = nextPage.querySelector("[contentEditable]");
       }
 
-      nextEditable.innerText =
-        overflowLine + "\n" + nextEditable.innerText;
-
-      placeCursorAtStart(nextEditable);
+      // Simple HTML shift: move last child to next page
+      if (el.lastChild) {
+        nextEditable.prepend(el.lastChild);
+        placeCursorAtStart(nextEditable);
+      }
     }
   };
 
@@ -154,11 +142,11 @@ export default function Editor({ document: doc, setSaveStatus }) {
     if (!prevPage) return;
 
     const prevEditable = prevPage.querySelector("[contentEditable]");
-    const currentText = el.innerText;
-
-    if (currentText.trim() !== "") {
-      prevEditable.innerText +=
-        (prevEditable.innerText ? "\n" : "") + currentText;
+    
+    // Merge innerHTML instead of innerText
+    const currentHTML = el.innerHTML;
+    if (currentHTML !== "<div><br></div>" && currentHTML !== "<br>") {
+      prevEditable.innerHTML += currentHTML;
     }
 
     parentPage.remove();
@@ -183,38 +171,29 @@ export default function Editor({ document: doc, setSaveStatus }) {
   const placeCursorAtStart = (el) => {
     const range = document.createRange();
     const sel = window.getSelection();
-
     range.setStart(el, 0);
     range.collapse(true);
-
     sel.removeAllRanges();
     sel.addRange(range);
-
     el.focus();
   };
 
   const placeCursorAtEnd = (el) => {
     const range = document.createRange();
     const sel = window.getSelection();
-
     range.selectNodeContents(el);
     range.collapse(false);
-
     sel.removeAllRanges();
     sel.addRange(range);
-
     el.focus();
   };
 
-  // Load content from backend
   useEffect(() => {
     const loadContent = async () => {
-      //  Don't reload if we are already looking at this document
       if (!docId || lastLoadedId.current === docId) return;
 
       try {
         setSaveStatus("saving");
-
         const token = localStorage.getItem("token");
         const res = await fetch(
           `http://localhost:8000/api/files/${docId}/content`,
@@ -228,7 +207,6 @@ export default function Editor({ document: doc, setSaveStatus }) {
           const serverPages = data.content?.pages || [""];
 
           if (containerRef.current) {
-            // Only clear and rebuild once the data is actually here
             containerRef.current.innerHTML = "";
             serverPages.forEach((content, idx) =>
               createPage(content, idx)
@@ -238,7 +216,6 @@ export default function Editor({ document: doc, setSaveStatus }) {
           lastLoadedId.current = docId;
           setSaveStatus("saved");
         } else {
-          // If 404 or error, initialize with a blank page
           if (containerRef.current) {
             containerRef.current.innerHTML = "";
             createPage("");
