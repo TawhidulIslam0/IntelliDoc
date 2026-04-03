@@ -86,12 +86,19 @@ export default function Editor({ document: doc, setSaveStatus }) {
     editable.style.height = "100%";
     editable.style.padding = `${PADDING}px`;
     editable.style.outline = "none";
-    editable.style.fontSize = "15px";
-    editable.style.lineHeight = "1.5";
+    
+    //  Standardized to match toolbar defaults and scale correctly
+    editable.style.fontSize = "11pt"; 
+    editable.style.fontFamily = "Arial, sans-serif";
+    editable.style.lineHeight = "normal"; // Allows line height to grow with large fonts
+    
     editable.style.color = "#202124";
     editable.style.boxSizing = "border-box";
     editable.style.overflow = "hidden";
     editable.style.wordBreak = "break-word";
+    
+    // Smooth text rendering
+    editable.style.webkitFontSmoothing = "antialiased";
 
     // Inject as innerHTML to render saved styles
     editable.innerHTML = initialContent || "<div><br></div>";
