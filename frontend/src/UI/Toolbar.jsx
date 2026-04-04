@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/static-components */
 /* eslint-disable react-hooks/set-state-in-effect */
 /* eslint-disable react-hooks/immutability */
 /* eslint-disable no-unused-vars */
@@ -11,21 +12,30 @@ import {
   Printer,
   AlignLeft,
   AlignCenter,
+  AlignRight,
   List,
   ListOrdered,
   Image,
   Link,
   ChevronDown,
   ChevronRight,
-  Check
+  Check,
+  Baseline,
+  Highlighter,
+  Type,
 } from "lucide-react";
 
 const Divider = () => (
   <div style={{ width: "1px", height: "20px", backgroundColor: "#dadce0", margin: "0 8px" }} />
 );
 
-// standard font sizes
 const FONT_SIZES = [8, 9, 10, 11, 12, 14, 18, 24, 30, 36, 48, 60, 72, 96];
+
+const COLOR_PALETTE = [
+  "#000000", "#434343", "#666666", "#999999", "#b7b7b7", "#cccccc", "#d9d9d9", "#efefef", "#f3f3f3", "#ffffff",
+  "#980000", "#ff0000", "#ff9900", "#ffff00", "#00ff00", "#00ffff", "#4a86e8", "#0000ff", "#9900ff", "#ff00ff",
+  "#e6b8af", "#f4cccc", "#fce5cd", "#fff2cc", "#d9ead3", "#d0e0e3", "#c9daf8", "#cfe2f3", "#d9d2e9", "#ead1dc",
+];
 
 const Toolbar = ({ editorRef, fileId }) => {
   const [fontSize, setFontSize] = useState(() => {
@@ -40,14 +50,20 @@ const Toolbar = ({ editorRef, fileId }) => {
   const [currentStyleLabel, setCurrentStyleLabel] = useState(() => {
     return localStorage.getItem(`editor-styleLabel-${fileId}`) || "Normal text";
   });
-  
+
   const [isStyleMenuOpen, setIsStyleMenuOpen] = useState(false);
   const [isFontMenuOpen, setIsFontMenuOpen] = useState(false);
-  const [isFontSizeMenuOpen, setIsFontSizeMenuOpen] = useState(false); 
-  
+  const [isFontSizeMenuOpen, setIsFontSizeMenuOpen] = useState(false);
+  const [isTextColorOpen, setIsTextColorOpen] = useState(false);
+  const [isHighlightColorOpen, setIsHighlightColorOpen] = useState(false);
+  const [textColor, setTextColor] = useState("#000000");
+  const [highlightColor, setHighlightColor] = useState("transparent");
+
   const menuRef = useRef(null);
   const fontMenuRef = useRef(null);
-  const fontSizeMenuRef = useRef(null); 
+  const fontSizeMenuRef = useRef(null);
+  const textColorRef = useRef(null);
+  const highlightColorRef = useRef(null);
   const skipSelectionUpdate = useRef(false);
 
   const [activeFormats, setActiveFormats] = useState({
@@ -55,9 +71,9 @@ const Toolbar = ({ editorRef, fileId }) => {
     italic: false,
     underline: false,
     align: "left",
-    list: null 
+    list: null
   });
-// popular fonts
+
   const fontOptions = [
     { name: "Arial", family: "Arial, sans-serif" },
     { name: "Times New Roman", family: "Times New Roman, serif" },
@@ -70,7 +86,7 @@ const Toolbar = ({ editorRef, fileId }) => {
     { name: "Raleway", family: "Raleway, sans-serif" },
     { name: "Roboto", family: "Roboto, sans-serif" },
   ];
-// styles
+
   const textStyles = [
     { label: "Normal text", value: "p", preview: { fontSize: "14px", fontWeight: "400" } },
     { label: "Title", value: "h1", preview: { fontSize: "24px", fontWeight: "700" } },
@@ -95,7 +111,10 @@ const Toolbar = ({ editorRef, fileId }) => {
         bold: document.queryCommandState("bold"),
         italic: document.queryCommandState("italic"),
         underline: document.queryCommandState("underline"),
-        align: document.queryCommandState("justifyCenter") ? "center" : "left",
+        align: document.queryCommandState("justifyCenter") ? "center" : 
+               document.queryCommandState("justifyRight") ? "right" : "left",
+        list: document.queryCommandState("insertUnorderedList") ? "bullet" :
+              document.queryCommandState("insertOrderedList") ? "number" : null
       });
 
       const rawFont = document.queryCommandValue("fontName");
@@ -133,6 +152,8 @@ const Toolbar = ({ editorRef, fileId }) => {
       if (menuRef.current && !menuRef.current.contains(event.target)) setIsStyleMenuOpen(false);
       if (fontMenuRef.current && !fontMenuRef.current.contains(event.target)) setIsFontMenuOpen(false);
       if (fontSizeMenuRef.current && !fontSizeMenuRef.current.contains(event.target)) setIsFontSizeMenuOpen(false);
+      if (textColorRef.current && !textColorRef.current.contains(event.target)) setIsTextColorOpen(false);
+      if (highlightColorRef.current && !highlightColorRef.current.contains(event.target)) setIsHighlightColorOpen(false);
     };
     document.addEventListener("mousedown", handleClickOutside);
     
@@ -151,53 +172,41 @@ const Toolbar = ({ editorRef, fileId }) => {
     }
     document.execCommand(command, false, finalValue);
   };
-    // font size
+
   const updateFontSize = (newSize) => {
-  const size = Math.max(1, Math.min(newSize, 96));
-  setFontSize(size);
+    const size = Math.max(1, Math.min(newSize, 96));
+    setFontSize(size);
+    const selection = window.getSelection();
+    if (!selection.rangeCount) return;
+    const range = selection.getRangeAt(0);
 
-  const selection = window.getSelection();
-  if (!selection.rangeCount) return;
-
-  const range = selection.getRangeAt(0);
-
-  // If no text is selected → apply to future typing
-  if (selection.isCollapsed) {
-    document.execCommand("fontSize", false, "7");
-
-    const fontElements = document.getElementsByTagName("font");
-    for (let el of fontElements) {
-      if (el.size === "7") {
-        el.removeAttribute("size");
-        el.style.fontSize = `${size}px`;
+    if (selection.isCollapsed) {
+      document.execCommand("fontSize", false, "7");
+      const fontElements = document.getElementsByTagName("font");
+      for (let el of fontElements) {
+        if (el.size === "7") {
+          el.removeAttribute("size");
+          el.style.fontSize = `${size}px`;
+        }
       }
+    } else {
+      const span = document.createElement("span");
+      span.style.fontSize = `${size}px`;
+      span.style.lineHeight = "1.2";
+      try {
+        range.surroundContents(span);
+      } catch (e) {
+        const fragment = range.extractContents();
+        span.appendChild(fragment);
+        range.insertNode(span);
+      }
+      selection.removeAllRanges();
+      const newRange = document.createRange();
+      newRange.selectNodeContents(span);
+      selection.addRange(newRange);
     }
-  } else {
-    // Wrap selected text in span (THIS fixes your issue)
-    const span = document.createElement("span");
-    span.style.fontSize = `${size}px`;
-    span.style.lineHeight = "1.2";
-
-    try {
-      range.surroundContents(span);
-    } catch (e) {
-      // fallback if selection is complex
-      const fragment = range.extractContents();
-      span.appendChild(fragment);
-      range.insertNode(span);
-    }
-
-    // keep selection
-    selection.removeAllRanges();
-    const newRange = document.createRange();
-    newRange.selectNodeContents(span);
-    selection.addRange(newRange);
-  }
-
-  if (fileId) {
-    localStorage.setItem(`editor-fontSize-${fileId}`, size);
-  }
-};
+    if (fileId) localStorage.setItem(`editor-fontSize-${fileId}`, size);
+  };
 
   const btnStyle = {
     border: "none", background: "transparent", padding: "6px", borderRadius: "4px",
@@ -230,6 +239,33 @@ const Toolbar = ({ editorRef, fileId }) => {
 
   const handleMouseEnter = (e) => (e.currentTarget.style.backgroundColor = "#e1e5ea");
   const handleMouseLeave = (e, isActive) => (e.currentTarget.style.backgroundColor = isActive ? "#d3e3fd" : "transparent");
+
+  const ColorPicker = ({ onSelect, activeColor }) => (
+    <div style={{ 
+      display: "grid", 
+      gridTemplateColumns: "repeat(10, 1fr)", 
+      gap: "4px", 
+      padding: "8px", 
+      backgroundColor: "white", 
+      border: "1px solid #dadce0", 
+      borderRadius: "8px", 
+      boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+      width: "220px"
+    }}>
+      {COLOR_PALETTE.map(color => (
+        <button
+          key={color}
+          onMouseDown={(e) => { e.preventDefault(); onSelect(color); }}
+          style={{
+            width: "18px", height: "18px", backgroundColor: color, border: color === "#ffffff" ? "1px solid #dadce0" : "none",
+            borderRadius: "2px", cursor: "pointer", position: "relative"
+          }}
+        >
+          {activeColor === color && <div style={{ position: "absolute", top: "-2px", left: "-2px", right: "-2px", bottom: "-2px", border: "2px solid #1a73e8", borderRadius: "2px" }} />}
+        </button>
+      ))}
+    </div>
+  );
 
   return (
     <div
@@ -324,7 +360,6 @@ const Toolbar = ({ editorRef, fileId }) => {
 
       <Divider />
 
-      {/* Improved styling for Font Size input to look like Google Docs */}
       <div style={{ position: "relative" }} ref={fontSizeMenuRef} title="Font Size">
         <div style={{ display: "flex", alignItems: "center" }}>
           <button style={btnStyle} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} onMouseDown={(e) => {e.preventDefault(); updateFontSize(fontSize - 1)}}>-</button>
@@ -376,16 +411,72 @@ const Toolbar = ({ editorRef, fileId }) => {
       <button style={getBtnStyle(activeFormats.italic)} onMouseEnter={handleMouseEnter} onMouseLeave={(e) => handleMouseLeave(e, activeFormats.italic)} onMouseDown={(e) => {e.preventDefault(); applyCommand("italic")}} title="Italic"><Italic size={18} /></button>
       <button style={getBtnStyle(activeFormats.underline)} onMouseEnter={handleMouseEnter} onMouseLeave={(e) => handleMouseLeave(e, activeFormats.underline)} onMouseDown={(e) => {e.preventDefault(); applyCommand("underline")}} title="Underline"><Underline size={18} /></button>
 
+      <div style={{ position: "relative" }} ref={textColorRef}>
+        <button 
+          style={{ ...btnStyle, flexDirection: "column", padding: "4px 6px" }} 
+          onClick={() => setIsTextColorOpen(!isTextColorOpen)}
+          title="Text color"
+        >
+          <Baseline size={18} />
+          <div style={{ width: "16px", height: "3px", backgroundColor: textColor, marginTop: "1px" }} />
+        </button>
+        {isTextColorOpen && (
+          <div style={{ position: "absolute", top: "40px", left: "-80px", zIndex: 1000 }}>
+            <ColorPicker 
+              activeColor={textColor} 
+              onSelect={(color) => {
+                setTextColor(color);
+                applyCommand("foreColor", color);
+                setIsTextColorOpen(false);
+              }} 
+            />
+          </div>
+        )}
+      </div>
+
+      <div style={{ position: "relative" }} ref={highlightColorRef}>
+        <button 
+          style={{ ...btnStyle, flexDirection: "column", padding: "4px 6px" }} 
+          onClick={() => setIsHighlightColorOpen(!isHighlightColorOpen)}
+          title="Highlight color"
+        >
+          <Highlighter size={18} />
+          <div style={{ width: "16px", height: "3px", backgroundColor: highlightColor, marginTop: "1px" }} />
+        </button>
+        {isHighlightColorOpen && (
+          <div style={{ position: "absolute", top: "40px", left: "-80px", zIndex: 1000 }}>
+            <ColorPicker 
+              activeColor={highlightColor} 
+              onSelect={(color) => {
+                setHighlightColor(color);
+                applyCommand("hiliteColor", color);
+                setIsHighlightColorOpen(false);
+              }} 
+            />
+          </div>
+        )}
+      </div>
+
+      <Divider />
+
+      <button style={btnStyle} title="Insert Link" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} onMouseDown={(e) => { e.preventDefault(); const url = prompt("Enter Link URL:"); if (url) applyCommand("createLink", url); }}><Link size={18} /></button>
+      <button style={btnStyle} title="Insert Image" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} onMouseDown={(e) => { e.preventDefault(); const url = prompt("Enter Image URL:"); if (url) applyCommand("insertImage", url); }}><Image size={18} /></button>
+
       <Divider />
 
       <button style={getBtnStyle(activeFormats.align === "left")} onMouseEnter={handleMouseEnter} onMouseLeave={(e) => handleMouseLeave(e, activeFormats.align === "left")} onMouseDown={(e) => {e.preventDefault(); applyCommand("justifyLeft")}} title="Align Left"><AlignLeft size={18} /></button>
       <button style={getBtnStyle(activeFormats.align === "center")} onMouseEnter={handleMouseEnter} onMouseLeave={(e) => handleMouseLeave(e, activeFormats.align === "center")} onMouseDown={(e) => {e.preventDefault(); applyCommand("justifyCenter")}} title="Align Center"><AlignCenter size={18} /></button>
+      <button style={getBtnStyle(activeFormats.align === "right")} onMouseEnter={handleMouseEnter} onMouseLeave={(e) => handleMouseLeave(e, activeFormats.align === "right")} onMouseDown={(e) => {e.preventDefault(); applyCommand("justifyRight")}} title="Align Right"><AlignRight size={18} /></button>
       
       <Divider />
 
-      <button style={btnStyle} title="Insert Image" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} onMouseDown={(e) => { e.preventDefault(); const url = prompt("Enter Image URL:"); if (url) applyCommand("insertImage", url); }}><Image size={18} /></button>
-      <button style={btnStyle} title="Insert Link" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} onMouseDown={(e) => { e.preventDefault(); const url = prompt("Enter Link URL:"); if (url) applyCommand("createLink", url); }}><Link size={18} /></button>
-      <input type="color" title="Text Color" onChange={(e) => applyCommand("foreColor", e.target.value)} style={{ width: "24px", height: "24px", border: "none", cursor: "pointer", marginLeft: "8px" }} />
+      <button style={getBtnStyle(activeFormats.list === "bullet")} onMouseEnter={handleMouseEnter} onMouseLeave={(e) => handleMouseLeave(e, activeFormats.list === "bullet")} onMouseDown={(e) => {e.preventDefault(); applyCommand("insertUnorderedList")}} title="Bulleted list"><List size={18} /></button>
+      <button style={getBtnStyle(activeFormats.list === "number")} onMouseEnter={handleMouseEnter} onMouseLeave={(e) => handleMouseLeave(e, activeFormats.list === "number")} onMouseDown={(e) => {e.preventDefault(); applyCommand("insertOrderedList")}} title="Numbered list"><ListOrdered size={18} /></button>
+
+      <Divider />
+
+      <button style={btnStyle} title="Clear formatting" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} onMouseDown={(e) => { e.preventDefault(); applyCommand("removeFormat"); }}><Type size={18} /></button>
+
     </div>
   );
 };
