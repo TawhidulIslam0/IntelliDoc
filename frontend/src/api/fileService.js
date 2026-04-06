@@ -1,4 +1,5 @@
 const API_URL = "http://localhost:8000/api";
+const CHUNK_SIZE = 6 * 1024 * 1024; // 6MB minimum for S3 multipart
 
 // Fetch list of files for the current user - Updated to support search
 export const getFiles = async (profileId, folderId = null, search = "") => {
@@ -38,14 +39,15 @@ const validateFileType = (file) => {
   throw new Error("Only TXT, PDF, and IDOC files are allowed");
 };
 
-// Upload file using presigned URL
-export const uploadFile = async (file, profileId, folderId = null) => {
+// Upload file using presigned URL (Supports both Chunked and Standard)
+export const uploadFile = async (file, profileId, folderId = null, progressCallback = null) => {
   validateFileType(file);
   const token = localStorage.getItem("token");
 
   if (!profileId) profileId = localStorage.getItem("currentProfileId");
   if (!profileId) throw new Error("No profile selected");
 
+  // Initiate Upload
   const initiateResp = await fetch(`${API_URL}/files/initiate-upload`, {
     method: "POST",
     headers: {
@@ -64,32 +66,90 @@ export const uploadFile = async (file, profileId, folderId = null) => {
   if (!initiateResp.ok) {
     const err = await initiateResp.text();
     console.error("initiate-upload error:", err);
-    throw new Error("Failed to get presigned URL");
+    throw new Error("Failed to initiate upload");
   }
 
-  const { presigned_url, file_id } = await initiateResp.json();
+  const { presigned_url, file_id, upload_id } = await initiateResp.json();
 
-  const s3Resp = await fetch(presigned_url, {
-    method: "PUT",
-    headers: { "Content-Type": file.type },
-    body: file,
-  });
+  //  Handle Upload (Chunked vs Single)
+  if (upload_id) {
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    const completedParts = [];
 
-  if (!s3Resp.ok) {
-    const err = await s3Resp.text();
-    console.error("S3 upload error:", err);
-    throw new Error("Upload to S3 failed");
-  }
+    for (let i = 0; i < totalChunks; i++) {
+      const partNumber = i + 1;
+      const start = i * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE, file.size);
+      const chunk = file.slice(start, end);
 
-  const completeResp = await fetch(`${API_URL}/files/${file_id}/complete`, {
-    method: "POST",
-    headers: { "Authorization": `Bearer ${token}` },
-  });
+      // Get presigned URL for this specific chunk
+      const chunkUrlResp = await fetch(`${API_URL}/files/presign-chunk`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          file_id: file_id,
+          part_number: partNumber,
+          upload_id: upload_id
+        }),
+      });
 
-  if (!completeResp.ok) {
-    const err = await completeResp.text();
-    console.error("complete upload error:", err);
-    throw new Error("Failed to finalize upload");
+      const { presigned_url: chunkUrl } = await chunkUrlResp.json();
+
+      // Upload chunk to S3
+      const s3Resp = await fetch(chunkUrl, {
+        method: "PUT",
+        body: chunk,
+      });
+
+      if (!s3Resp.ok) throw new Error(`Chunk ${partNumber} upload failed`);
+
+      // ETag is required for completion
+      const etag = s3Resp.headers.get("ETag");
+      completedParts.push({ ETag: etag, PartNumber: partNumber });
+
+      // Notify UI of progress
+      if (progressCallback) {
+        progressCallback(Math.round(((i + 1) / totalChunks) * 100));
+      }
+    }
+
+    // Finalize Multipart
+    const completeResp = await fetch(`${API_URL}/files/complete-chunked-upload`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        file_id: file_id,
+        upload_id: upload_id,
+        parts: completedParts
+      }),
+    });
+
+    if (!completeResp.ok) throw new Error("Failed to finalize chunked upload");
+    
+  } else {
+    // --- STANDARD SINGLE UPLOAD ---
+    const s3Resp = await fetch(presigned_url, {
+      method: "PUT",
+      headers: { "Content-Type": file.type },
+      body: file,
+    });
+
+    if (!s3Resp.ok) throw new Error("Upload to S3 failed");
+
+    const completeResp = await fetch(`${API_URL}/files/${file_id}/complete`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${token}` },
+    });
+
+    if (!completeResp.ok) throw new Error("Failed to finalize upload");
+    
+    if (progressCallback) progressCallback(100);
   }
 
   return { file_id };
