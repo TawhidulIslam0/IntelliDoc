@@ -1,5 +1,6 @@
 const API_URL = "http://localhost:8000/api";
-const CHUNK_SIZE = 6 * 1024 * 1024; // 6MB minimum for S3 multipart
+const CHUNK_SIZE = 6 * 1024 * 1024; // Matches backend threshold 
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB (10240 kb) limit
 
 // Fetch list of files for the current user - Updated to support search
 export const getFiles = async (profileId, folderId = null, search = "") => {
@@ -32,16 +33,24 @@ export const getFiles = async (profileId, folderId = null, search = "") => {
   return response.json();
 };
 
-// Validate TXT/PDF/IDOC file 
-const validateFileType = (file) => {
+// Type + Size 
+const validateFile = (file) => {
   const name = file.name.toLowerCase();
-  if (name.endsWith(".txt") || name.endsWith(".pdf") || name.endsWith(".idoc")) return;
-  throw new Error("Only TXT, PDF, and IDOC files are allowed");
+  
+  // Extension Check
+  if (!(name.endsWith(".txt") || name.endsWith(".pdf") || name.endsWith(".idoc"))) {
+    throw new Error("Only TXT, PDF, and IDOC files are allowed");
+  }
+
+  // Size Check
+  if (file.size > MAX_FILE_SIZE) {
+    throw new Error(`DEBUG_ERROR: File size ${file.size} exceeds limit ${MAX_FILE_SIZE}.`);
+  }
 };
 
 // Upload file using presigned URL (Supports both Chunked and Standard)
 export const uploadFile = async (file, profileId, folderId = null, progressCallback = null) => {
-  validateFileType(file);
+  validateFile(file);
   const token = localStorage.getItem("token");
 
   if (!profileId) profileId = localStorage.getItem("currentProfileId");
@@ -64,14 +73,14 @@ export const uploadFile = async (file, profileId, folderId = null, progressCallb
   });
 
   if (!initiateResp.ok) {
-    const err = await initiateResp.text();
-    console.error("initiate-upload error:", err);
-    throw new Error("Failed to initiate upload");
+    // specific error message from FastAPI (like "File too large")
+    const errData = await initiateResp.json().catch(() => ({ detail: "Failed to initiate upload" }));
+    throw new Error(errData.detail || "Failed to initiate upload");
   }
 
   const { presigned_url, file_id, upload_id } = await initiateResp.json();
 
-  //  Handle Upload (Chunked vs Single)
+  // Handle Upload (Chunked vs Single)
   if (upload_id) {
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
     const completedParts = [];
@@ -133,7 +142,7 @@ export const uploadFile = async (file, profileId, folderId = null, progressCallb
     if (!completeResp.ok) throw new Error("Failed to finalize chunked upload");
     
   } else {
-    // --- STANDARD SINGLE UPLOAD ---
+    // Single upload
     const s3Resp = await fetch(presigned_url, {
       method: "PUT",
       headers: { "Content-Type": file.type },
@@ -168,7 +177,7 @@ export const getPreviewUrl = async (fileId, profileId) => {
   return response.json();
 };
 
-// Download
+// Download URL Generator
 export const getDownloadUrl = async (fileId, profileId) => {
   const token = localStorage.getItem("token");
   if (!profileId) profileId = localStorage.getItem("currentProfileId");
@@ -195,7 +204,7 @@ export const deleteFile = async (fileId, profileId) => {
   return true;
 };
 
-// Download trigger
+// Download trigger (Executes the download)
 export const downloadFile = async (fileId, fileName, profileId) => {
   const token = localStorage.getItem("token");
   if (!profileId) profileId = localStorage.getItem("currentProfileId");
