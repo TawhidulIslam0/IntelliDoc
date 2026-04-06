@@ -48,7 +48,20 @@ class InitiateUploadRequest(BaseModel):
 
 class InitiateUploadResponse(BaseModel):
     file_id: uuid.UUID
-    presigned_url: str
+    presigned_url: Optional[str] = None
+    upload_id: Optional[str] = None
+
+
+class PresignChunkRequest(BaseModel):
+    file_id: uuid.UUID
+    part_number: int
+    upload_id: str
+
+
+class CompleteChunkedUploadRequest(BaseModel):
+    file_id: uuid.UUID
+    upload_id: str
+    parts: list[dict] 
 
 
 class CreateBlankDocRequest(BaseModel):
@@ -98,23 +111,10 @@ async def initiate_upload(
 
     # Generate unique file ID and S3 key
     file_id = uuid.uuid4()
+    # Separating external uploads into their own folder
     s3_key = f"uploads/{current_user.id}/{file_id}/{payload.name}"
 
-    # Generate presigned URL for upload
-    try:
-        presigned_url = s3.generate_presigned_url(
-            "put_object",
-            Params={
-                "Bucket": BUCKET_NAME,
-                "Key": s3_key,
-                "ContentType": payload.mime_type
-            },
-            ExpiresIn=PRESIGNED_URL_EXPIRY
-        )
-    except ClientError:
-        raise HTTPException(status_code=500, detail="Failed to generate presigned URL")
-
-    # Save file metadata in database
+    # Save file metadata in database FIRST to ensure record exists before S3 operations
     now = datetime.now(timezone.utc)
     new_file = File(
         id=file_id,
@@ -134,10 +134,97 @@ async def initiate_upload(
     db.commit()
     db.refresh(new_file)
 
-    # Return presigned URL to client
-    return InitiateUploadResponse(file_id=new_file.id, presigned_url=presigned_url)
+    upload_id = None
+    presigned_url = None
 
-# Creating blank document endpoint
+    # Logic for Chunked vs Simple Upload
+    try:
+        # If file is > 6MB, we use Multipart Upload (S3 requirement for chunks)
+        if payload.size_bytes > 6 * 1024 * 1024:
+            response = s3.create_multipart_upload(
+                Bucket=BUCKET_NAME,
+                Key=s3_key,
+                ContentType=payload.mime_type
+            )
+            upload_id = response["UploadId"]
+        else:
+            # Generate standard presigned URL for upload
+            presigned_url = s3.generate_presigned_url(
+                "put_object",
+                Params={
+                    "Bucket": BUCKET_NAME,
+                    "Key": s3_key,
+                    "ContentType": payload.mime_type
+                },
+                ExpiresIn=PRESIGNED_URL_EXPIRY
+            )
+    except ClientError:
+        # Cleanup record if S3 session fails
+        db.delete(new_file)
+        db.commit()
+        raise HTTPException(status_code=500, detail="Failed to generate S3 upload session")
+
+    # Return details to client
+    return InitiateUploadResponse(
+        file_id=new_file.id, 
+        presigned_url=presigned_url, 
+        upload_id=upload_id
+    )
+
+# Generate a presigned URL for a specific part (chunk) of a multipart upload
+@router.post("/presign-chunk")
+async def presign_chunk(
+    payload: PresignChunkRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)]
+):
+    file = db.get(File, payload.file_id)
+    if not file or file.owner_id != current_user.id:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    try:
+        url = s3.generate_presigned_url(
+            ClientMethod="upload_part",
+            Params={
+                "Bucket": BUCKET_NAME,
+                "Key": file.s3_key,
+                "UploadId": payload.upload_id,
+                "PartNumber": payload.part_number,
+            },
+            ExpiresIn=PRESIGNED_URL_EXPIRY,
+        )
+        return {"presigned_url": url}
+    except ClientError:
+        raise HTTPException(status_code=500, detail="Failed to generate chunk URL")
+
+# Finalize the multipart upload by assembling all uploaded chunks in S3
+@router.post("/complete-chunked-upload")
+async def complete_chunked_upload(
+    payload: CompleteChunkedUploadRequest,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    file = db.get(File, payload.file_id)
+    if not file or file.owner_id != current_user.id:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    try:
+        s3.complete_multipart_upload(
+            Bucket=BUCKET_NAME,
+            Key=file.s3_key,
+            UploadId=payload.upload_id,
+            MultipartUpload={"Parts": payload.parts}
+        )
+    except ClientError:
+        raise HTTPException(status_code=500, detail="Failed to complete multipart upload")
+
+    file.status = "completed"
+    file.updated_at = datetime.now(timezone.utc).isoformat()
+    db.commit()
+    return {"message": "Upload completed successfully"}
+
+
+# Creating blank document 
 @router.post("/create-blank-doc", status_code=status.HTTP_201_CREATED)
 async def create_blank_doc(
     payload: CreateBlankDocRequest,
@@ -179,9 +266,10 @@ async def create_blank_doc(
         final_name = f"{base_name} ({counter}){extension}"
         counter += 1
 
-    #  Proceed with S3 and DB insertion using final_name
+    # Proceed with S3 and DB insertion using final_name
     file_id = uuid.uuid4()
-    s3_key = f"uploads/{current_user.id}/{file_id}/{final_name}"
+    # Separating internal dashboard documents into 'documents/' folder
+    s3_key = f"documents/{current_user.id}/{file_id}/{final_name}"
 
     try:
         s3.put_object(
@@ -262,8 +350,7 @@ async def list_files(
             elif file_type == "txt":
                 stmt = stmt.where(File.name.ilike("%.txt"))
             elif file_type == "folder":
-                
-                return []  # This returns an empty list for files, as folders are handled 
+                return [] 
         else:
             # Global Name Search: Find matches anywhere in the profile
             stmt = stmt.where(File.name.ilike(f"%{search_query}%"))
@@ -298,7 +385,6 @@ async def preview_file(
     current_user: Annotated[User, Depends(get_current_user)],
     profile_id: Optional[uuid.UUID] = None
 ):
-    # Default to default profile if profile_id not provided
     if not profile_id:
         profile = db.scalar(
             select(Profile).where(
@@ -339,7 +425,6 @@ async def download_file(
     current_user: Annotated[User, Depends(get_current_user)],
     profile_id: Optional[uuid.UUID] = None
 ):
-    # Default to default profile if profile_id not provided
     if not profile_id:
         profile = db.scalar(
             select(Profile).where(
@@ -376,7 +461,7 @@ async def download_file(
     return {"url": presigned_url}
 
 
-# Mark upload as complete after client confirms upload to S3
+# Mark upload as complete after client confirms upload to S3 (For single uploads)
 @router.post("/{file_id}/complete")
 async def complete_upload(
     file_id: uuid.UUID,
@@ -390,7 +475,6 @@ async def complete_upload(
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
-    # Verify file exists in S3
     try:
         s3.head_object(Bucket=BUCKET_NAME, Key=file.s3_key)
     except ClientError:
@@ -398,7 +482,6 @@ async def complete_upload(
 
     file.status = "completed"
     file.updated_at = datetime.now(timezone.utc).isoformat()
-
     db.commit()
 
     return {"message": "Upload completed"}
@@ -412,7 +495,6 @@ async def delete_file(
     current_user: Annotated[User, Depends(get_current_user)],
     profile_id: Optional[uuid.UUID] = None
 ):
-    # Default to default profile if profile_id not provided
     if not profile_id:
         profile = db.scalar(
             select(Profile).where(
@@ -433,7 +515,6 @@ async def delete_file(
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
-    # Delete from S3
     try:
         s3.delete_object(Bucket=BUCKET_NAME, Key=file.s3_key)
     except ClientError:
@@ -441,18 +522,16 @@ async def delete_file(
 
     db.delete(file)
     db.commit()
-
     return
 
 
-# Add this endpoint so the editor can load file content
+# Editor can load file content
 @router.get("/{file_id}/content")
 async def get_file_content(
     file_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)]
 ):
-    # Fetch file metadata
     file = db.scalar(
         select(File).where(File.id == file_id, File.owner_id == current_user.id)
     )
@@ -461,15 +540,11 @@ async def get_file_content(
         raise HTTPException(status_code=404, detail="File not found")
 
     try:
-        # Load actual JSON content from S3
         response = s3.get_object(Bucket=BUCKET_NAME, Key=file.s3_key)
         content_bytes = response["Body"].read().decode("utf-8")
         content_json = json.loads(content_bytes)
-
         return {"content": content_json}
-
     except ClientError as e:
-        # If file doesn't exist yet, return default structure
         if e.response["Error"]["Code"] == "NoSuchKey":
             return {"content": {"pages": [""]}}
         raise HTTPException(status_code=500, detail="Failed to fetch from S3")
@@ -491,18 +566,9 @@ async def update_file_content(
         raise HTTPException(status_code=404, detail="File not found")
 
     content = payload.content
+    if not isinstance(content, dict) or "pages" not in content:
+        raise HTTPException(status_code=422, detail="Invalid content structure")
 
-    # Validate content structure
-    if not isinstance(content, dict):
-        raise HTTPException(status_code=422, detail="Content must be an object")
-
-    if "pages" not in content:
-        raise HTTPException(status_code=422, detail="Missing 'pages' field")
-
-    if not isinstance(content["pages"], list):
-        raise HTTPException(status_code=422, detail="'pages' must be a list")
-
-    # Normalize page data
     content["pages"] = [str(p) for p in content["pages"]]
 
     try:
@@ -518,13 +584,12 @@ async def update_file_content(
     now = datetime.now(timezone.utc).isoformat()
     file.updated_at = now
     file.size_bytes = len(json.dumps(content).encode("utf-8"))
-
     db.commit()
 
     return {"message": "Sync successful", "updated_at": now}
 
 
-# Add this route to the router
+# Rename file
 @router.put("/{file_id}/title")
 async def rename_file(
     file_id: uuid.UUID,
@@ -532,7 +597,6 @@ async def rename_file(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)]
 ):
-    # Find the file belonging to this user
     file = db.scalar(
         select(File).where(File.id == file_id, File.owner_id == current_user.id)
     )
@@ -540,7 +604,6 @@ async def rename_file(
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
-    # Update the name 
     file.name = payload.name
     file.updated_at = datetime.now(timezone.utc).isoformat()
 
