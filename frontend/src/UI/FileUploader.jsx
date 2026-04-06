@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { uploadFile } from "../api/fileService";
 
-export default function FileUploader({ refreshFiles, folderId = null }) {
+export default function FileUploader({ refreshFiles, folderId = null, profileId = null }) {
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -18,22 +18,26 @@ export default function FileUploader({ refreshFiles, folderId = null }) {
     setLoading(true);
 
     try {
-      // Upload using presigned URL (fetch-only)
-      await uploadFile(file, folderId);
+      // Ensure profileId is passed so fileService.js knows where to put it
+      const actualProfileId = profileId || localStorage.getItem("currentProfileId");
+       // Upload using presigned URL (fetch-only)
+      await uploadFile(file, actualProfileId, folderId);
+
       alert("File uploaded successfully");
-
-      // Reset file input
       setFile(null);
-      document.querySelector('input[type="file"]').value = "";
-
+      
+      // Clear the input field UI
+      const fileInput = document.querySelector('input[type="file"]');
+      if (fileInput) fileInput.value = "";
+ 
       // Refresh file list
       refreshFiles();
     } catch (error) {
       console.error("Upload error:", error);
-      alert("Upload failed");
+      alert(error.message || "Upload failed");
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   return (
@@ -43,7 +47,11 @@ export default function FileUploader({ refreshFiles, folderId = null }) {
         onChange={handleFileChange}
         disabled={loading}
       />
-      <button onClick={handleUpload} disabled={loading}>
+      <button 
+        onClick={handleUpload} 
+        disabled={loading || !file}
+        style={{ marginLeft: '10px' }}
+      >
         {loading ? "Uploading..." : "Upload"}
       </button>
     </div>
