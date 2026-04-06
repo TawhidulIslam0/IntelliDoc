@@ -83,6 +83,14 @@ async def initiate_upload(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)]
 ):
+    # Allow  max size to be 10mb (10240 kb)
+    MAX_ALLOWED_SIZE = 10 * 1024 * 1024  
+    if payload.size_bytes > MAX_ALLOWED_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="File is too large. Maximum allowed size is 10MB."
+        )
+
     # Check that the profile belongs to the current user
     profile = db.scalar(
         select(Profile).where(
@@ -111,7 +119,6 @@ async def initiate_upload(
 
     # Generate unique file ID and S3 key
     file_id = uuid.uuid4()
-    # Separating external uploads into their own folder
     s3_key = f"uploads/{current_user.id}/{file_id}/{payload.name}"
 
     # Save file metadata in database FIRST to ensure record exists before S3 operations
@@ -139,7 +146,7 @@ async def initiate_upload(
 
     # Logic for Chunked vs Simple Upload
     try:
-        # If file is > 6MB, we use Multipart Upload (S3 requirement for chunks)
+        # Use Multipart Upload for anything larger than 6MB
         if payload.size_bytes > 6 * 1024 * 1024:
             response = s3.create_multipart_upload(
                 Bucket=BUCKET_NAME,
