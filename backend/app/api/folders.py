@@ -19,6 +19,10 @@ class CreateFolderRequest(BaseModel):
     parent_id: Optional[uuid.UUID] = None
     profile_id: uuid.UUID  # required profile for folder
 
+# Request model to rename folder
+class RenameFolderRequest(BaseModel):
+    name: str
+
 # Response model for folders
 class FolderResponse(BaseModel):
     id: uuid.UUID
@@ -110,6 +114,27 @@ def get_folders(
     folders = db.scalars(stmt).all()
     return folders
 
+# Rename a folder
+@router.patch("/{folder_id}/rename", response_model=FolderResponse)
+def rename_folder(
+    folder_id: uuid.UUID,
+    payload: RenameFolderRequest,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)]
+):
+    stmt = select(Folder).where(Folder.id == folder_id, Folder.owner_id == current_user.id)
+    folder = db.scalar(stmt)
+    
+    if not folder:
+        raise HTTPException(status_code=404, detail="Folder not found")
+
+    folder.name = payload.name
+    # Explicitly commit the change
+    db.commit()
+    db.refresh(folder)
+    return folder
+
+# Delete a fodler
 @router.delete("/{folder_id}")
 def delete_folder(
     folder_id: uuid.UUID,
