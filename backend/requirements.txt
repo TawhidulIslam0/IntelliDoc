@@ -9,3 +9,7 @@ pwdlib[argon2]
 boto3
 authlib
 itsdangerous
+html2text
+python-docx
+beautifulsoup4
+xhtml2pdf
