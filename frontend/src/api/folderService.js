@@ -62,6 +62,26 @@ export const createFolder = async (name, profileId, parentId = null) => {
 
   return response.json();
 };
+// Rename a folder
+export const renameFolder = async (folderId, newName) => {
+  const token = localStorage.getItem("token");
+  const response = await fetch(`${API_URL}/folders/${folderId}/rename`, {
+    method: "PATCH", 
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ name: newName }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("Rename folder error:", errorText);
+    throw new Error("Failed to rename folder");
+  }
+
+  return response.json();
+};
 
 // Delete a folder
 export const deleteFolder = async (folderId, profileId) => {
