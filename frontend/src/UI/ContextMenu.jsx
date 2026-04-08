@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import renameFileIcon from '../assets/renamefile.png';
 import renameFolderIcon from '../assets/renamefolder.png';
 import downloadFileIcon from '../assets/downloadfilebutton.png';
@@ -6,7 +6,35 @@ import deleteFileIcon from '../assets/deletefilebutton.png';
 import deleteFolderIcon from '../assets/deletefolderbutton.png';
 
 export default function ContextMenu({ x, y, type, item, onClose, onAction }) {
-  
+  const menuRef = useRef(null);
+  const [position, setPosition] = useState({ x, y });
+
+  useLayoutEffect(() => {
+    if (!menuRef.current) return;
+
+    const rect = menuRef.current.getBoundingClientRect();
+    const padding = 8;
+
+    let nextX = x;
+    let nextY = y;
+
+    if (nextX + rect.width > window.innerWidth - padding) {
+      nextX = window.innerWidth - rect.width - padding;
+    }
+
+    if (nextY + rect.height > window.innerHeight - padding) {
+      nextY = window.innerHeight - rect.height - padding;
+    }
+
+    if (nextX < padding) nextX = padding;
+    if (nextY < padding) nextY = padding;
+
+    setPosition((prev) => {
+      if (prev.x === nextX && prev.y === nextY) return prev;
+      return { x: nextX, y: nextY };
+    });
+  }, [x, y, type]);
+
   // Decide which icons and visibility logic to use
   const isFolder = type === 'folder';
   const isDoc = type === 'doc';
@@ -19,8 +47,8 @@ export default function ContextMenu({ x, y, type, item, onClose, onAction }) {
   // The floating container style
   const menuStyle = {
     position: 'fixed',
-    top: `${y}px`,
-    left: `${x}px`,
+    top: `${position.y}px`,
+    left: `${position.x}px`,
     backgroundColor: '#fff',
     border: '1px solid #dadce0',
     borderRadius: '8px',
@@ -49,7 +77,7 @@ export default function ContextMenu({ x, y, type, item, onClose, onAction }) {
         style={{ position: 'fixed', inset: 0, zIndex: 1999 }} 
       />
 
-      <div style={menuStyle}>
+      <div ref={menuRef} style={menuStyle}>
         {/* RENAME */}
         {(isFolder || isDoc) && (
           <div 
