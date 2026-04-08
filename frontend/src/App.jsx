@@ -116,9 +116,9 @@ export default function App() {
     const token = localStorage.getItem("token");
 
     try {
-       // Sync to Backend 
-      const res = await fetch(`http://127.0.0.1:8000/api/files/${docId}/title`, {
-        method: "PUT",
+      // Sync to Backend 
+      const res = await fetch(`http://127.0.0.1:8000/api/files/${docId}/rename`, {
+        method: "PATCH",
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`,
@@ -137,7 +137,7 @@ export default function App() {
         )
       );
 
-       // Update active document 
+      // Update active document 
       setActiveDoc((prev) => (prev ? { ...prev, name: newName } : prev));
       setSaveStatus("saved");
     } catch (err) {
