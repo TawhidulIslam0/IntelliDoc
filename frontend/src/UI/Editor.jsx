@@ -1,17 +1,33 @@
 /* eslint-disable no-unused-vars */
 /* eslint-disable react-hooks/exhaustive-deps */
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useImperativeHandle, forwardRef } from "react";
+import { renameFile } from "../api/fileService"; 
 
 const PAGE_HEIGHT = 1056; 
 const PAGE_WIDTH = 816;
 const GAP_SIZE = 24;
 const PADDING = 96; 
 
-export default function Editor({ document: doc, setSaveStatus }) {
+const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate }, ref) => {
   const containerRef = useRef(null);
   const saveTimeoutRef = useRef(null);
   const lastLoadedId = useRef(null);
   const docId = doc?.id || doc?.file_id;
+
+  // Expose rename to parent/navbar
+  useImperativeHandle(ref, () => ({
+    handleRename: async (newName) => {
+      if (!docId) return;
+      setSaveStatus("saving");
+      try {
+        const updated = await renameFile(docId, newName);
+        if (onDocUpdate) onDocUpdate(updated);
+        setSaveStatus("saved");
+      } catch (err) {
+        setSaveStatus("error");
+      }
+    }
+  }));
 
   const triggerAutoSave = () => {
     setSaveStatus("saving");
@@ -198,4 +214,6 @@ export default function Editor({ document: doc, setSaveStatus }) {
       <div ref={containerRef} style={{ display: "flex", flexDirection: "column", alignItems: "center" }} />
     </main>
   );
-}
+});
+
+export default Editor;
