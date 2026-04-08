@@ -2,7 +2,7 @@
 /* eslint-disable no-undef */
 import React, { useEffect, useState, useContext, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { uploadFile, getPreviewUrl, deleteFile, createBlankDoc, renameFile } from "../api/fileService"; 
+import { uploadFile, getPreviewUrl, deleteFile, createBlankDoc, renameFile, moveFile } from "../api/fileService"; 
 import { getFolders, createFolder, deleteFolder, renameFolder } from "../api/folderService";
 import uploadIcon from "../assets/uploadbutton.png";
 import folderIcon from "../assets/folderbutton.png";
@@ -15,13 +15,21 @@ const formatDisplayName = (name) => {
 };
 
 // Sub-component for Folder to handle individual hover state
-const FolderItem = ({ folder, onFolderClick, onOpenMenu }) => {
+const FolderItem = ({ folder, onFolderClick, onOpenMenu, onDropFile }) => {
   const [isHovered, setIsHovered] = useState(false);
   return (
     <div
       onClick={() => onFolderClick(folder)}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      onDragOver={(e) => {
+        e.preventDefault();
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onDropFile(folder.id);
+      }}
       style={{
         width: 150,
         height: 45, 
@@ -63,10 +71,12 @@ const FolderItem = ({ folder, onFolderClick, onOpenMenu }) => {
 };
 
 // Sub-component for File to handle individual hover state
-const FileItem = ({ doc, onOpenDoc, onOpenMenu, isRecentDoc }) => {
+const FileItem = ({ doc, onOpenDoc, onOpenMenu, isRecentDoc, onDragStart }) => {
   const [isHovered, setIsHovered] = useState(false);
   return (
     <div
+      draggable
+      onDragStart={(e) => onDragStart(e, doc)}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       style={{ 
@@ -151,6 +161,7 @@ const DashBoard = ({ setDocuments }) => {
   const [folderStack, setFolderStack] = useState([]);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [menuConfig, setMenuConfig] = useState(null); // Menu state
+  const [draggedFile, setDraggedFile] = useState(null);
 
   // Derive currentFolderId from the top of the folderStack
   const currentFolderId = folderStack.length > 0 ? folderStack[folderStack.length - 1].id : null;
@@ -419,6 +430,29 @@ const DashBoard = ({ setDocuments }) => {
     setFolderStack((prev) => prev.slice(0, -1));
   };
 
+  // Drag file handler
+  const handleDragStart = (e, doc) => {
+    setDraggedFile(doc);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  // Move file handler
+  const handleMoveFile = async (targetFolderId) => {
+    if (!draggedFile || !currentProfile) return;
+
+    try {
+      await moveFile(draggedFile.id, targetFolderId, currentProfile.id);
+      setFetchedDocuments((prev) => prev.filter((file) => file.id !== draggedFile.id));
+      await fetchFiles(currentFolderId);
+      await fetchFolders();
+    } catch (err) {
+      console.error("Failed to move file:", err);
+      alert("Failed to move file: " + err.message);
+    } finally {
+      setDraggedFile(null);
+    }
+  };
+
   // Delete folder
   const handleDeleteFolder = async (folderId) => {
     if (!window.confirm("Delete this folder?")) return;
@@ -489,7 +523,7 @@ const DashBoard = ({ setDocuments }) => {
               <div style={{ color: "#5f6368", fontSize: 13 }}>No recent documents.</div>
             ) : (
               recentDocs.map((doc) => (
-                <FileItem key={doc.id} doc={doc} onOpenDoc={handleOpenDoc} onOpenMenu={handleOpenMenu} isRecentDoc={true} />
+                <FileItem key={doc.id} doc={doc} onOpenDoc={handleOpenDoc} onOpenMenu={handleOpenMenu} isRecentDoc={true} onDragStart={handleDragStart} />
               ))
             )}
           </div>
@@ -502,11 +536,29 @@ const DashBoard = ({ setDocuments }) => {
               </button>
             )}
             <div>
-              <span style={{ cursor: "pointer" }} onClick={() => setFolderStack([])}>Home</span>
+              <span
+                style={{ cursor: "pointer" }}
+                onClick={() => setFolderStack([])}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  handleMoveFile(null);
+                }}
+              >
+                Home
+              </span>
               {folderStack.map((folder, index) => (
                 <span key={folder.id}>
                   {" / "}
-                  <span style={{ cursor: "pointer", fontWeight: 500 }} onClick={() => setFolderStack(folderStack.slice(0, index + 1))}>
+                  <span
+                    style={{ cursor: "pointer", fontWeight: 500 }}
+                    onClick={() => setFolderStack(folderStack.slice(0, index + 1))}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      handleMoveFile(folder.id);
+                    }}
+                  >
                     {folder.name}
                   </span>
                 </span>
@@ -518,7 +570,7 @@ const DashBoard = ({ setDocuments }) => {
           <span style={{ fontWeight: 500, fontSize: 16 }}>Folders</span>
           <div style={{ display: "flex", gap: 25, marginTop: 20, flexWrap: "wrap" }}>
             {folders.map((folder) => (
-              <FolderItem key={folder.id} folder={folder} onFolderClick={handleFolderClick} onOpenMenu={handleOpenMenu} />
+              <FolderItem key={folder.id} folder={folder} onFolderClick={handleFolderClick} onOpenMenu={handleOpenMenu} onDropFile={handleMoveFile} />
             ))}
           </div>
 
@@ -531,7 +583,7 @@ const DashBoard = ({ setDocuments }) => {
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 150px)", gap: 25, marginTop: 20 }}>
               {uploadedFiles.map((doc) => (
-                <FileItem key={doc.id} doc={doc} onOpenDoc={handleOpenDoc} onOpenMenu={handleOpenMenu} isRecentDoc={false} />
+                <FileItem key={doc.id} doc={doc} onOpenDoc={handleOpenDoc} onOpenMenu={handleOpenMenu} isRecentDoc={false} onDragStart={handleDragStart} />
               ))}
             </div>
           )}

@@ -18,6 +18,7 @@ from app.api.users import get_current_user
 from app.models.file import File 
 from app.models.user import User
 from app.models.profile import Profile
+from app.models.folder import Folder
 
 # Load environment variables from .env
 load_dotenv()
@@ -75,6 +76,10 @@ class UpdateFileContentRequest(BaseModel):
     
 class RenameFileRequest(BaseModel):
     name: str
+
+class MoveFileRequest(BaseModel):
+    profile_id: uuid.UUID
+    folder_id: Optional[uuid.UUID] = None
 
 # Create presigned URL for file upload
 @router.post("/initiate-upload", response_model=InitiateUploadResponse, status_code=status.HTTP_201_CREATED)
@@ -595,6 +600,65 @@ async def update_file_content(
 
     return {"message": "Sync successful", "updated_at": now}
 
+# move file to different folder
+@router.patch("/{file_id}/move")
+async def move_file(
+    file_id: uuid.UUID,
+    payload: MoveFileRequest,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)]
+):
+    file = db.scalar(
+        select(File).where(
+            File.id == file_id,
+            File.owner_id == current_user.id,
+            File.profile_id == payload.profile_id
+        )
+    )
+
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # Verify target folder belongs to the same user/profile
+    if payload.folder_id is not None:
+        folder = db.scalar(
+            select(Folder).where(
+                Folder.id == payload.folder_id,
+                Folder.owner_id == current_user.id,
+                Folder.profile_id == payload.profile_id
+            )
+        )
+
+        if not folder:
+            raise HTTPException(status_code=404, detail="Target folder not found")
+
+    # No-op if already in target folder
+    if file.folder_id == payload.folder_id:
+        return {
+            "message": "File already in target folder",
+            "file_id": str(file.id),
+            "folder_id": str(file.folder_id) if file.folder_id else None
+        }
+
+    file.folder_id = payload.folder_id
+    file.updated_at = datetime.now(timezone.utc).isoformat()
+
+    try:
+        db.commit()
+        db.refresh(file)
+    except Exception:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="A file with the same name already exists in the destination folder"
+        )
+
+    return {
+        "message": "File moved successfully",
+        "file_id": str(file.id),
+        "folder_id": str(file.folder_id) if file.folder_id else None,
+        "updated_at": file.updated_at
+    }
 
 # Rename file
 @router.patch("/{file_id}/rename")

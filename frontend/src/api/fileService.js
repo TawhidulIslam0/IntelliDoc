@@ -288,3 +288,29 @@ export const updateFileContent = async (fileId, content) => {
   }
   return response.json();
 };
+
+export const moveFile = async (fileId, folderId = null, profileId) => {
+  const token = localStorage.getItem("token");
+
+  if (!profileId) profileId = localStorage.getItem("currentProfileId");
+  if (!profileId) throw new Error("No profile selected");
+
+  const response = await fetch(`${API_URL}/files/${fileId}/move`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      profile_id: profileId,
+      folder_id: folderId || null,
+    }),
+  });
+
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({ detail: "Failed to move file" }));
+    throw new Error(errData.detail || "Failed to move file");
+  }
+
+  return response.json();
+};
