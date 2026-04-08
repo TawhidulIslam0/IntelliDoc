@@ -6,40 +6,48 @@ import logo from "../assets/file_icon_logo.png";
 
 export default function EditorNavbar({
   activeDoc,
-  onRenameDoc,
+  onRenameDoc, // This is the function passed from Editor.jsx
   saveStatus, 
 }) {
   const navigate = useNavigate();
 
-  // Initialize state directly from props 
-  const [displayName, setDisplayName] = useState(() => {
-    const initialName = activeDoc?.name || activeDoc?.title || "";
-    return initialName.replace(/\.idoc$/, "");
-  });
+  // Local state for the input field
+  const [displayName, setDisplayName] = useState("");
 
-  // Sync navbar input when switching documents (e.g., clicking a different doc in a sidebar)
+  //  Initial Load & External Sync
+  // If the doc changes (or is renamed from the sidebar), update the input field
   useEffect(() => {
     if (activeDoc) {
-      const nameToDisplay = activeDoc.name || activeDoc.title || "";
-      setDisplayName(nameToDisplay.replace(/\.idoc$/, ""));
+      const nameToDisplay = activeDoc.name || activeDoc.title || "Untitled Document";
+      const cleanName = nameToDisplay.replace(/\.idoc$/, "");
+      setDisplayName(cleanName);
+      
+      // Also sync the browser tab title
+      document.title = `${cleanName} - IntelliDoc`;
     }
-  }, [activeDoc?.id]); // Only re-run if the unique ID changes
+  }, [activeDoc?.id, activeDoc?.name]); 
 
-  // Update local UI immediately while typing
+  //  Handle typing 
   const handleChange = (e) => {
     setDisplayName(e.target.value);
   };
 
-  // Trigger the backend save when the user clicks away (Blur) or presses Enter
+  // Finalize Rename (Triggers Backend Save)
+  // This runs on Blur (clicking away) or pressing Enter
   const handleFinalizeRename = () => {
     const trimmedName = displayName.trim();
-    if (!trimmedName) return;
+    if (!trimmedName) {
+      // Reset to original name if user leaves it empty
+      setDisplayName((activeDoc?.name || "").replace(/\.idoc$/, ""));
+      return;
+    }
     
-    // Check if the name actually changed to avoid redundant API calls
     const currentName = (activeDoc?.name || activeDoc?.title || "").replace(/\.idoc$/, "");
-    if (trimmedName === currentName) return;
-
-    onRenameDoc(`${trimmedName}.idoc`);
+    
+    if (trimmedName !== currentName) {
+      //  append the extension back for the backend/database
+      onRenameDoc(`${trimmedName}.idoc`);
+    }
   };
 
   return (
@@ -53,10 +61,8 @@ export default function EditorNavbar({
       borderBottom: "1px solid #E5E7EB",
     }}>
       
-      {/* Left side: logo + document title editor */}
       <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
         
-        {/* Click logo to return home */}
         <div onClick={() => navigate("/")} style={{
           display: "flex",
           alignItems: "center",
@@ -66,17 +72,17 @@ export default function EditorNavbar({
           <img src={logo} alt="logo" style={{ width: "28px", height: "28px" }} />
         </div>
 
-        {/* Document title + save status */}
         {activeDoc && (
           <div style={{ display: "flex", alignItems: "center" }}>
             
-            {/* Editable document name */}
             <input
               value={displayName}
               onChange={handleChange}
-              onBlur={handleFinalizeRename} 
+              onBlur={handleFinalizeRename} // Saves when user clicks away
               onKeyDown={(e) => {
-                if (e.key === "Enter") e.target.blur(); // Triggers onBlur logic
+                if (e.key === "Enter") {
+                  e.target.blur(); // Forces onBlur to trigger save
+                }
               }}
               placeholder="Untitled Document"
               style={{
@@ -90,14 +96,18 @@ export default function EditorNavbar({
                 cursor: "text",
                 marginLeft: "10px",
                 minWidth: "200px",
+                transition: "all 0.2s"
               }}
+              onMouseOver={(e) => (e.target.style.backgroundColor = "#F3F4F6")}
+              onMouseOut={(e) => (e.target.style.backgroundColor = "transparent")}
+              onFocus={(e) => (e.target.style.border = "1px solid #4285f4")}
             />
 
-            {/* Save status indicator */}
             <div style={{
               marginLeft: "15px",
               fontSize: "14px",
               color: "#5F6368",
+              fontStyle: "italic"
             }}>
               {saveStatus === "saving" && "Saving..."}
               {saveStatus === "saved" && "☁ saved"}
@@ -107,7 +117,6 @@ export default function EditorNavbar({
         )}
       </div>
 
-      {/* Right side implement in future such as(share, settings, etc.) */}
       <div />
     </header>
   );
