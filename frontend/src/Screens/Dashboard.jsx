@@ -1,22 +1,21 @@
+/* eslint-disable no-unused-vars */
 /* eslint-disable no-undef */
 import React, { useEffect, useState, useContext, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { uploadFile, getPreviewUrl, deleteFile, createBlankDoc } from "../api/fileService"; 
-import { getFolders, createFolder, deleteFolder } from "../api/folderService";
+import { uploadFile, getPreviewUrl, deleteFile, createBlankDoc, renameFile } from "../api/fileService"; 
+import { getFolders, createFolder, deleteFolder, renameFolder } from "../api/folderService";
 import uploadIcon from "../assets/uploadbutton.png";
 import folderIcon from "../assets/folderbutton.png";
-import deleteFileIcon from "../assets/deletefilebutton.png"; 
-import downloadIcon from "../assets/downloadfilebutton.png";
-import deleteFolderIcon from "../assets/deletefolderbutton.png";
 import { ProfileContext } from "../UI/ProfileContext"; 
+import ContextMenu from "../UI/ContextMenu"; // New Import for the menu
 
-// Helper function to remove .idoc extension for display
+// Helper function to remove extensions for display (e.g. .idoc, .pdf)
 const formatDisplayName = (name) => {
-  return name.replace(/\.idoc$/, "");
+  return name.replace(/\.[^/.]+$/, "");
 };
 
 // Sub-component for Folder to handle individual hover state
-const FolderItem = ({ folder, onFolderClick, onDeleteFolder }) => {
+const FolderItem = ({ folder, onFolderClick, onOpenMenu }) => {
   const [isHovered, setIsHovered] = useState(false);
   return (
     <div
@@ -36,37 +35,35 @@ const FolderItem = ({ folder, onFolderClick, onDeleteFolder }) => {
         position: "relative",
         transition: "background-color 0.1s",
       }}
-    > {/* Delete Folder Button - Only shows on hover */}
-      {isHovered && (
-        <img
-          src={deleteFolderIcon}
-          alt="Delete Folder"
-          onClick={(e) => {
-            e.stopPropagation(); 
-            onDeleteFolder(folder.id);
-          }}
-          style={{
-            position: "absolute",
-            top: "50%",
-            right: 8,
-            transform: "translateY(-50%)",
-            width: 16,
-            height: 16,
-            cursor: "pointer",
-            zIndex: 10,
-          }}
-        />
-      )}
+    > 
       <span style={{ marginRight: 8 }}>📁</span>
-      <span style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: isHovered ? "80px" : "110px" }}>
+      <span style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
         {folder.name}
       </span>
+      
+      {/* Menu Trigger for folder - Positioned next to name */}
+      {isHovered && (
+        <div 
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenMenu(e, 'folder', folder);
+          }}
+          style={{
+            fontWeight: "bold",
+            fontSize: "18px",
+            color: "#5f6368",
+            padding: "0 5px"
+          }}
+        >
+          ⋮
+        </div>
+      )}
     </div>
   );
 };
 
 // Sub-component for File to handle individual hover state
-const FileItem = ({ doc, onOpenDoc, onDeleteFile, onDownloadFile, isRecentDoc }) => {
+const FileItem = ({ doc, onOpenDoc, onOpenMenu, isRecentDoc }) => {
   const [isHovered, setIsHovered] = useState(false);
   return (
     <div
@@ -80,47 +77,7 @@ const FileItem = ({ doc, onOpenDoc, onDeleteFile, onDownloadFile, isRecentDoc })
         backgroundColor: isHovered ? "#e8f0fe" : "transparent", 
         transition: "background-color 0.2s"
       }} 
-    >{/* Delete button - shows on hover */}
-      {isHovered && (
-        <img
-          src={deleteFileIcon}
-          alt="Delete"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDeleteFile(doc.id);
-          }}
-          style={{
-            position: "absolute",
-            top: 5,
-            right: 5,
-            width: 20,
-            height: 20,
-            cursor: "pointer",
-            zIndex: 10,
-          }}
-        />
-      )}
-     {/* Download button - shows on hover */}
-      {isHovered && !isRecentDoc && (
-        <img
-          src={downloadIcon}
-          alt="Download"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDownloadFile(doc.id, doc.name);
-          }}
-          style={{
-            position: "absolute",
-            bottom: 50, 
-            right: 5,
-            width: 20,
-            height: 20,
-            cursor: "pointer",
-            zIndex: 10,
-          }}
-        />
-      )}
-
+    >
       <div onClick={() => onOpenDoc(doc)}>
         <div
           style={{
@@ -139,23 +96,45 @@ const FileItem = ({ doc, onOpenDoc, onDeleteFile, onDownloadFile, isRecentDoc })
           </span>
         </div>
 
-        <div style={{ padding: "10px 5px" }}>
-          <div
-            style={{
-              fontWeight: 500,
-              fontSize: 13,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              color: isHovered ? "#1967d2" : "#202124"  
-            }}
-          >
-            {isRecentDoc ? formatDisplayName(doc.name) : doc.name}
+        <div style={{ padding: "10px 5px", display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+          <div style={{ overflow: "hidden" }}>
+            <div
+              style={{
+                fontWeight: 500,
+                fontSize: 13,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                color: isHovered ? "#1967d2" : "#202124"  
+              }}
+            >
+              {formatDisplayName(doc.name)}
+            </div>
+
+            <div style={{ fontSize: 12, color: "#5f6368" }}>
+              {isRecentDoc ? "IntelliDoc" : `${(doc.size_bytes / 1024).toFixed(1)} KB`}
+            </div>
           </div>
 
-          <div style={{ fontSize: 12, color: "#5f6368" }}>
-            {isRecentDoc ? "IntelliDoc" : `${(doc.size_bytes / 1024).toFixed(1)} KB`}
-          </div>
+          {/* Menu Trigger for document - Positioned next to name below the file image */}
+          {isHovered && (
+            <div 
+              onClick={(e) => {
+                e.stopPropagation();
+                // Differentiate types so context menu knows which actions to show
+                const menuType = doc.name.endsWith(".idoc") ? 'doc' : 'file';
+                onOpenMenu(e, menuType, doc);
+              }}
+              style={{
+                fontWeight: "bold",
+                fontSize: "18px",
+                color: "#5f6368",
+                padding: "0 5px"
+              }}
+            >
+              ⋮
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -171,7 +150,9 @@ const DashBoard = ({ setDocuments }) => {
   const [folders, setFolders] = useState([]);
   const [folderStack, setFolderStack] = useState([]);
   const [previewUrl, setPreviewUrl] = useState(null);
-   // Derive currentFolderId from the top of the folderStack
+  const [menuConfig, setMenuConfig] = useState(null); // Menu state
+
+  // Derive currentFolderId from the top of the folderStack
   const currentFolderId = folderStack.length > 0 ? folderStack[folderStack.length - 1].id : null;
   // State to handle hover for the "Blank document" card
   const [isNewDocHovered, setIsNewDocHovered] = useState(false);
@@ -181,7 +162,7 @@ const DashBoard = ({ setDocuments }) => {
   const recentDocs = fetchedDocuments.filter(doc => doc.name.endsWith(".idoc"));
   const uploadedFiles = fetchedDocuments.filter(doc => !doc.name.endsWith(".idoc"));
 
- // Fetch user on mount
+  // Fetch user on mount
   useEffect(() => {
     const initialize = async () => {
       const token = localStorage.getItem("token");
@@ -208,11 +189,10 @@ const DashBoard = ({ setDocuments }) => {
     initialize();
   }, [navigate]);
 
-// Fetch folders for current profile
+  // Fetch folders for current profile
   const fetchFolders = useCallback(async () => {
     if (!currentProfile) return;
     try {
-      // Added currentFolderId to get subfolders
       const data = await getFolders(currentProfile.id, currentFolderId); 
       setFolders(data);
     } catch (err) {
@@ -220,7 +200,7 @@ const DashBoard = ({ setDocuments }) => {
     }
   }, [currentProfile, currentFolderId]);
 
-// Fetch files for current folder and profile
+  // Fetch files for current folder and profile
   const fetchFiles = useCallback(
     async (folderId = null) => {
       if (!currentProfile) return;
@@ -228,7 +208,6 @@ const DashBoard = ({ setDocuments }) => {
       if (!token) return;
 
       try {
-        // Use the state if no specific folderId is passed
         const targetId = folderId !== null ? folderId : currentFolderId;
         const url = targetId
           ? `http://localhost:8000/api/files/?folder_id=${targetId}&profile_id=${currentProfile.id}`
@@ -247,12 +226,69 @@ const DashBoard = ({ setDocuments }) => {
     [currentProfile, currentFolderId]
   );
 
-// Added currentFolderId to dependency array to trigger refresh on navigation
+  // Added currentFolderId to dependency array to trigger refresh on navigation
   useEffect(() => {
     if (!currentProfile) return;
     fetchFolders();
     fetchFiles();
   }, [currentProfile, currentFolderId, fetchFolders, fetchFiles]);
+
+  // Handle Context Menu Opening
+  const handleOpenMenu = (e, type, item) => {
+    setMenuConfig({
+      x: e.clientX,
+      y: e.clientY,
+      type: type,
+      item: item
+    });
+  };
+
+  // Handle centralized menu actions
+  const handleMenuAction = async (action, item) => {
+    if (action === 'delete') {
+      menuConfig.type === 'folder' ? handleDeleteFolder(item.id) : handleDeleteFile(item.id);
+    } else if (action === 'download') {
+      if (menuConfig.type !== 'folder') {
+        handleDownloadFile(item.id, item.name);
+      }
+    } else if (action === 'rename') {
+      const currentName = formatDisplayName(item.name);
+      const newName = prompt("Enter new name:", currentName);
+      
+      if (newName && newName !== currentName) {
+        try {
+          if (menuConfig.type === 'folder') {
+            const updatedFolder = await renameFolder(item.id, newName);
+            // Update state directly for immediate UI feedback
+            setFolders(prev => prev.map(f => f.id === item.id ? { ...f, name: updatedFolder.name } : f));
+          } else {
+            // Re-append .idoc extension if it's an internal doc type
+            const finalName = item.name.endsWith(".idoc") ? `${newName}.idoc` : newName;
+            const updatedFile = await renameFile(item.id, finalName);
+            
+            // 1. Update Dashboard's local fetchedDocuments state
+            setFetchedDocuments(prev => prev.map(f => f.id === item.id ? { ...f, name: updatedFile.name } : f));
+            
+            // 2. Update the parent documents state (setDocuments prop) so the Editor matches instantly
+            if (setDocuments) {
+              setDocuments(prev => prev.map(doc => 
+                doc.id === item.id ? { ...doc, name: updatedFile.name } : doc
+              ));
+            }
+
+            // 3. Update document.title if the renamed file is the one open
+            if (window.location.pathname.includes(item.id)) {
+                document.title = `${newName} - IntelliDoc`;
+            }
+          }
+        } catch (err) {
+          console.error("Rename failed:", err);
+          alert("Failed to rename item");
+        }
+      }
+    }
+    setMenuConfig(null);
+  };
 
   // Create blank document
   const handleNewDocument = async () => {
@@ -263,24 +299,18 @@ const DashBoard = ({ setDocuments }) => {
         currentProfile.id, 
         currentFolderId
       );
-
-      // use correct id field safely
       const docId = newDoc.file_id || newDoc.id;
-
-      // Sync local state in App.jsx so the "Bouncer" sees the document
       if (setDocuments) {
         setDocuments(prev => [...prev, { ...newDoc, id: docId, profileId: currentProfile.id }]);
       }
-
       navigate(`/editor/${docId}`);
-
     } catch (err) {
       console.error("Failed to create document:", err);
       alert("Could not start a new document. Please try again.");
     }
   };
 
- // Preview file
+  // Preview file
   const handleOpenDoc = async (doc) => {
     if (doc.name.endsWith(".idoc")) {
       navigate(`/editor/${doc.id}`);
@@ -298,40 +328,28 @@ const DashBoard = ({ setDocuments }) => {
   // Delete file handler
   const handleDeleteFile = async (fileId) => {
     if (!window.confirm("Are you sure you want to delete this file?")) return;
-
     try {
       await deleteFile(fileId);
-      // Remove file from UI 
       setFetchedDocuments((prev) => prev.filter((file) => file.id !== fileId));
     } catch (err) {
-      errors.error(err);
+      console.error(err);
       alert("Failed to delete file");
     }
   };
 
-  // Download file handler (fetch presigned URL and trigger browser download)
+  // Download file handler
   const handleDownloadFile = async (fileId, fileName) => {
     try {
       const token = localStorage.getItem("token");
       if (!token) throw new Error("No auth token found");
-      
-      // Request download URL from backend
       const res = await fetch(`http://localhost:8000/api/files/${fileId}/download`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-
       if (!res.ok) throw new Error("Failed to get download URL");
-      
-      // Use the correct key returned by backend
-      const { url } = await res.json(); // backend returns url: presigned_url 
-
-      // Fetch actual file from S3 using presigned URL
+      const { url } = await res.json(); 
       const fileResp = await fetch(url);
       if (!fileResp.ok) throw new Error("Failed to fetch file from S3");
-
       const blob = await fileResp.blob();
-
-      // Trigger browser download
       const downloadLink = document.createElement("a");
       downloadLink.href = window.URL.createObjectURL(blob);
       downloadLink.download = fileName;
@@ -349,40 +367,26 @@ const DashBoard = ({ setDocuments }) => {
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (!selectedFile) return;
-
-    const allowedTypes = [
-      "text/plain",
-      "application/pdf",
-      "application/msword",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "image/png",
-      "image/jpeg",
-    ];
-
+    const allowedTypes = ["text/plain", "application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "image/png", "image/jpeg"];
     if (!allowedTypes.includes(selectedFile.type)) {
       alert("Only TXT, PDF, Word, and Images allowed.");
       return;
     }
-
     if (selectedFile.size > 10 * 1024 * 1024) {
       alert("File is too large.");
       return;
     }
-
     setFile(selectedFile);
   };
 
- // Upload file
+  // Upload file
   const handleUpload = async () => {
     if (!file) return alert("Please select a file first.");
-
     try {
       setUploading(true);
       await uploadFile(file, currentProfile.id, currentFolderId);
-
       alert("File uploaded successfully");
       setFile(null);
-
       await fetchFiles(currentFolderId);
     } catch (err) {
       console.error(err);
@@ -392,11 +396,10 @@ const DashBoard = ({ setDocuments }) => {
     }
   };
 
- // Create folder
+  // Create folder
   const handleCreateFolder = async () => {
     const name = prompt("Enter folder name");
     if (!name) return;
-
     try {
       await createFolder(name, currentProfile.id, currentFolderId);
       fetchFolders();
@@ -406,38 +409,31 @@ const DashBoard = ({ setDocuments }) => {
     }
   };
 
- // Open folder
+  // Open folder
   const handleFolderClick = (folder) => {
     setFolderStack((prev) => [...prev, folder]);
   };
 
-// Go back one folder
+  // Go back one folder
   const handleGoBack = () => {
     setFolderStack((prev) => prev.slice(0, -1));
   };
 
-    // Delete folder
+  // Delete folder
   const handleDeleteFolder = async (folderId) => {
     if (!window.confirm("Delete this folder?")) return;
-
     try {
       await deleteFolder(folderId, currentProfile.id);
-      // Remove from UI immediately
-      setFolders((prev) =>
-        prev.filter((folder) => folder.id !== folderId)
-      );
-
+      setFolders((prev) => prev.filter((folder) => folder.id !== folderId));
       if (currentFolderId === folderId) {
         handleGoBack();
       }
-
     } catch (err) {
       console.error(err);
       alert("Failed to delete folder");
     }
   };
 
-  // Prevents the dashboard from rendering blank before the context is ready
   if (profilesLoading) {
     return (
       <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", height: "80vh", fontSize: 18, color: "#5f6368" }}>
@@ -454,13 +450,11 @@ const DashBoard = ({ setDocuments }) => {
         </div>
       )}
 
-      {/* New Document Section */}
+      {/* Document Section */}
       <div style={{ backgroundColor: "#f1f3f4", padding: "18px 0 40px 0" }}>
         <div style={{ maxWidth: 850, margin: "0 auto" }}>
           <span style={{ fontSize: 16 }}>Start a new document</span>
-
           <div style={{ marginTop: 15, display: "flex", gap: 30 }}>
-            {/* Wrapped in div to catch hover for the card + label */}
             <div 
               onMouseEnter={() => setIsNewDocHovered(true)}
               onMouseLeave={() => setIsNewDocHovered(false)}
@@ -469,27 +463,15 @@ const DashBoard = ({ setDocuments }) => {
               <div
                 onClick={handleNewDocument}
                 style={{
-                  width: 150,
-                  height: 190,
-                  backgroundColor: "white",
+                  width: 150, height: 190, backgroundColor: "white",
                   border: isNewDocHovered ? "1px solid #4285f4" : "1px solid #dadce0", 
-                  borderRadius: 4,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 50,
-                  color: "#4285f4",
-                  transition: "border 0.2s"
+                  borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 50, color: "#4285f4", transition: "border 0.2s"
                 }}
               >
                 +
               </div>
-
-              <div style={{ 
-                marginTop: 10, 
-                fontWeight: 500,
-                color: isNewDocHovered ? "#1967d2" : "#202124" 
-              }}>
+              <div style={{ marginTop: 10, fontWeight: 500, color: isNewDocHovered ? "#1967d2" : "#202124" }}>
                 Blank document
               </div>
             </div>
@@ -507,132 +489,49 @@ const DashBoard = ({ setDocuments }) => {
               <div style={{ color: "#5f6368", fontSize: 13 }}>No recent documents.</div>
             ) : (
               recentDocs.map((doc) => (
-                <FileItem key={doc.id} doc={doc} onOpenDoc={handleOpenDoc} onDeleteFile={handleDeleteFile} isRecentDoc={true} />
+                <FileItem key={doc.id} doc={doc} onOpenDoc={handleOpenDoc} onOpenMenu={handleOpenMenu} isRecentDoc={true} />
               ))
             )}
           </div>
 
           {/* Breadcrumb Navigation */}
-          <div
-            style={{
-              marginBottom: 15,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              fontSize: 14,
-            }}
-          >
-
-            {/* Back Button */}
+          <div style={{ marginBottom: 15, display: "flex", alignItems: "center", gap: 10, fontSize: 14 }}>
             {folderStack.length > 0 && (
-              <button
-                onClick={handleGoBack}
-                style={{
-                  padding: "5px 10px",
-                  borderRadius: 6,
-                  border: "1px solid #dadce0",
-                  cursor: "pointer",
-                  backgroundColor: "white",
-                }}
-              >
+              <button onClick={handleGoBack} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid #dadce0", cursor: "pointer", backgroundColor: "white" }}>
                 ← Back
               </button>
             )}
-
-            {/* Breadcrumb Path */}
             <div>
-
-              {/* Home */}
-              <span
-                style={{ cursor: "pointer" }}
-                onClick={() => setFolderStack([])}
-              >
-                Home
-              </span>
-
-              {/* Folder Path */}
+              <span style={{ cursor: "pointer" }} onClick={() => setFolderStack([])}>Home</span>
               {folderStack.map((folder, index) => (
                 <span key={folder.id}>
                   {" / "}
-                  <span
-                    style={{
-                      cursor: "pointer",
-                      fontWeight: 500,
-                    }}
-                    onClick={() =>
-                      setFolderStack(
-                        folderStack.slice(0, index + 1)
-                      )
-                    }
-                  >
+                  <span style={{ cursor: "pointer", fontWeight: 500 }} onClick={() => setFolderStack(folderStack.slice(0, index + 1))}>
                     {folder.name}
                   </span>
                 </span>
               ))}
-
             </div>
-
           </div>
-          <span style={{ fontWeight: 500, fontSize: 16 }}>Folders</span>
 
-          <div
-            style={{
-              display: "flex",
-              gap: 25,
-              marginTop: 20,
-              flexWrap: "wrap",
-            }}
-          >
+          {/* Folders */}
+          <span style={{ fontWeight: 500, fontSize: 16 }}>Folders</span>
+          <div style={{ display: "flex", gap: 25, marginTop: 20, flexWrap: "wrap" }}>
             {folders.map((folder) => (
-              <FolderItem 
-                key={folder.id} 
-                folder={folder} 
-                onFolderClick={handleFolderClick} 
-                onDeleteFolder={handleDeleteFolder} 
-              />
+              <FolderItem key={folder.id} folder={folder} onFolderClick={handleFolderClick} onOpenMenu={handleOpenMenu} />
             ))}
           </div>
 
           {/* Files */}
-          <span
-            style={{
-              fontWeight: 500,
-              fontSize: 16,
-              marginTop: 40,
-              display: "block",
-            }}
-          >
-            Files
-          </span>
-
+          <span style={{ fontWeight: 500, fontSize: 16, marginTop: 40, display: "block" }}>Files</span>
           {uploadedFiles.length === 0 ? (
-            <div
-              style={{
-                marginTop: 20,
-                textAlign: "center",
-                color: "#5f6368",
-              }}
-            >
+            <div style={{ marginTop: 20, textAlign: "center", color: "#5f6368" }}>
               No files yet. Upload your first file.
             </div>
           ) : (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(5, 150px)",
-                gap: 25,
-                marginTop: 20,
-              }}
-            >
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 150px)", gap: 25, marginTop: 20 }}>
               {uploadedFiles.map((doc) => (
-                <FileItem 
-                  key={doc.id}
-                  doc={doc}
-                  onOpenDoc={handleOpenDoc}
-                  onDeleteFile={handleDeleteFile}
-                  onDownloadFile={handleDownloadFile}
-                  isRecentDoc={false}
-                />
+                <FileItem key={doc.id} doc={doc} onOpenDoc={handleOpenDoc} onOpenMenu={handleOpenMenu} isRecentDoc={false} />
               ))}
             </div>
           )}
@@ -640,101 +539,37 @@ const DashBoard = ({ setDocuments }) => {
       </div>
 
       {/* Hidden file input */}
-      <input
-        type="file"
-        id="fileUploadInput"
-        style={{ display: "none" }}
-        onChange={handleFileChange}
-      />
+      <input type="file" id="fileUploadInput" style={{ display: "none" }} onChange={handleFileChange} />
 
-      {/* Folder Button */}
-      <img
-        src={folderIcon}
-        alt="Create Folder"
-        onClick={handleCreateFolder}
-        style={{
-          position: "fixed",
-          bottom: 110,
-          right: 30,
-          width: 60,
-          height: 60,
-          cursor: "pointer",
-          zIndex: 1000,
-        }}
-      />
+      {/* UI Buttons */}
+      <img src={folderIcon} alt="Create Folder" onClick={handleCreateFolder} style={{ position: "fixed", bottom: 110, right: 30, width: 60, height: 60, cursor: "pointer", zIndex: 1000 }} />
+      <img src={uploadIcon} alt="Upload" onClick={() => document.getElementById("fileUploadInput").click()} style={{ position: "fixed", bottom: 30, right: 30, width: 60, height: 60, cursor: "pointer", zIndex: 1000 }} />
 
-      {/* Upload Button */}
-      <img
-        src={uploadIcon}
-        alt="Upload"
-        onClick={() => document.getElementById("fileUploadInput").click()}
-        style={{
-          position: "fixed",
-          bottom: 30,
-          right: 30,
-          width: 60,
-          height: 60,
-          cursor: "pointer",
-          zIndex: 1000,
-        }}
-      />
-
-      {/* Upload confirmation button */}
       {file && (
-        <button
-          onClick={handleUpload}
-          disabled={uploading}
-          style={{
-            position: "fixed",
-            bottom: 190,
-            right: 30,
-            padding: "10px 20px",
-            backgroundColor: "#4285f4",
-            color: "white",
-            border: "none",
-            borderRadius: 6,
-            cursor: "pointer",
-            zIndex: 1000,
-          }}
-        >
+        <button onClick={handleUpload} disabled={uploading} style={{ position: "fixed", bottom: 190, right: 30, padding: "10px 20px", backgroundColor: "#4285f4", color: "white", border: "none", borderRadius: 6, cursor: "pointer", zIndex: 1000 }}>
           {uploading ? "Uploading..." : `Upload ${file.name}`}
         </button>
       )}
 
       {/* File Preview */}
       {previewUrl && (
-        <div
-          onClick={() => setPreviewUrl(null)}
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            width: "100%",
-            height: "100%",
-            backgroundColor: "rgba(0,0,0,0.7)",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            zIndex: 2000,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: "80%",
-              height: "80%",
-              backgroundColor: "white",
-              borderRadius: 8,
-              overflow: "hidden",
-            }}
-          >
-            <iframe
-              src={previewUrl}
-              title="File Preview"
-              style={{ width: "100%", height: "100%", border: "none" }}
-            />
+        <div onClick={() => setPreviewUrl(null)} style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "rgba(0,0,0,0.7)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: "80%", height: "80%", backgroundColor: "white", borderRadius: 8, overflow: "hidden" }}>
+            <iframe src={previewUrl} title="File Preview" style={{ width: "100%", height: "100%", border: "none" }} />
           </div>
         </div>
+      )}
+
+      {/* Context Menu Rendering */}
+      {menuConfig && (
+        <ContextMenu 
+          x={menuConfig.x} 
+          y={menuConfig.y} 
+          type={menuConfig.type} 
+          item={menuConfig.item} 
+          onClose={() => setMenuConfig(null)} 
+          onAction={handleMenuAction}
+        />
       )}
     </div>
   );
