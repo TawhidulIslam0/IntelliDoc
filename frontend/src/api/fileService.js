@@ -204,7 +204,27 @@ export const deleteFile = async (fileId, profileId) => {
   return true;
 };
 
-// Download trigger (Executes the download)
+// Rename file
+export const renameFile = async (fileId, newName) => {
+  const token = localStorage.getItem("token");
+  const response = await fetch(`${API_URL}/files/${fileId}/rename`, {
+    method: "PATCH", 
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ name: newName }),
+  });
+
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({ detail: "Failed to rename file" }));
+    console.error("rename file error:", errData);
+    throw new Error(errData.detail || "Failed to rename file");
+  }
+  return response.json(); 
+};
+
+// Download trigger
 export const downloadFile = async (fileId, fileName, profileId) => {
   const token = localStorage.getItem("token");
   if (!profileId) profileId = localStorage.getItem("currentProfileId");
