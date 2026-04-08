@@ -597,7 +597,7 @@ async def update_file_content(
 
 
 # Rename file
-@router.put("/{file_id}/title")
+@router.patch("/{file_id}/rename")
 async def rename_file(
     file_id: uuid.UUID,
     payload: RenameFileRequest,
@@ -615,4 +615,10 @@ async def rename_file(
     file.updated_at = datetime.now(timezone.utc).isoformat()
 
     db.commit()
-    return {"message": "Name updated successfully"}
+    
+    # Return everything the frontend needs to sync the UI 
+    return {
+        "message": "Name updated successfully", 
+        "name": file.name,
+        "updated_at": file.updated_at
+    }
