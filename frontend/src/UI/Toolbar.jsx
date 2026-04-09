@@ -25,6 +25,18 @@ import {
   Type,
 } from "lucide-react";
 
+// CSS to hide the up/down arrows (spinners) in the font size input
+const hideArrowsCSS = `
+  input::-webkit-outer-spin-button,
+  input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type=number] {
+    -moz-appearance: textfield;
+  }
+`;
+
 const Divider = () => (
   <div style={{ width: "1px", height: "20px", backgroundColor: "#dadce0", margin: "0 8px" }} />
 );
@@ -42,6 +54,9 @@ const Toolbar = ({ editorRef, fileId }) => {
     const saved = localStorage.getItem(`editor-fontSize-${fileId}`);
     return saved ? Number(saved) : 11;
   });
+
+  // Local state for the input field to prevent jumping while typing
+  const [inputValue, setInputValue] = useState(fontSize.toString());
 
   const [fontFamily, setFontFamily] = useState(() => {
     return localStorage.getItem(`editor-fontFamily-${fileId}`) || "Arial";
@@ -65,6 +80,8 @@ const Toolbar = ({ editorRef, fileId }) => {
   const textColorRef = useRef(null);
   const highlightColorRef = useRef(null);
   const skipSelectionUpdate = useRef(false);
+  const isTypingFontSize = useRef(false); 
+  const isApplyingSize = useRef(false); // NEW: Lock to prevent cursor detection from reverting size
 
   const [activeFormats, setActiveFormats] = useState({
     bold: false,
@@ -105,7 +122,8 @@ const Toolbar = ({ editorRef, fileId }) => {
 
   useEffect(() => {
     const handleSelectionChange = () => {
-      if (skipSelectionUpdate.current) return;
+      // IF applying size or typing, don't let the cursor position change the toolbar number
+      if (skipSelectionUpdate.current || isTypingFontSize.current || isApplyingSize.current) return;
       
       setActiveFormats({
         bold: document.queryCommandState("bold"),
@@ -116,6 +134,21 @@ const Toolbar = ({ editorRef, fileId }) => {
         list: document.queryCommandState("insertUnorderedList") ? "bullet" :
               document.queryCommandState("insertOrderedList") ? "number" : null
       });
+
+      // SYNC FONT SIZE WITH CURSOR POSITION
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        let node = selection.anchorNode;
+        if (node && node.nodeType === 3) node = node.parentElement;
+
+        if (node) {
+          const computedStyle = window.getComputedStyle(node);
+          const sizeInPx = parseFloat(computedStyle.fontSize);
+          const sizeInPt = Math.round(sizeInPx * 0.75);
+          setFontSize(sizeInPt);
+          setInputValue(sizeInPt.toString()); 
+        }
+      }
 
       const rawFont = document.queryCommandValue("fontName");
       if (rawFont) {
@@ -175,23 +208,35 @@ const Toolbar = ({ editorRef, fileId }) => {
 
   const updateFontSize = (newSize) => {
     const size = Math.max(1, Math.min(newSize, 96));
+    
+    // LOCK selection updates so the editor doesn't fight back
+    isApplyingSize.current = true;
+    
     setFontSize(size);
+    setInputValue(size.toString());
+    
+    if (editorRef?.current) editorRef.current.focus();
+    
     const selection = window.getSelection();
     if (!selection.rangeCount) return;
     const range = selection.getRangeAt(0);
 
     if (selection.isCollapsed) {
-      document.execCommand("fontSize", false, "7");
-      const fontElements = document.getElementsByTagName("font");
-      for (let el of fontElements) {
-        if (el.size === "7") {
-          el.removeAttribute("size");
-          el.style.fontSize = `${size}px`;
-        }
-      }
+      const span = document.createElement("span");
+      span.style.fontSize = `${size}pt`;
+      span.style.lineHeight = "1.2";
+      span.innerHTML = "&#8203;"; 
+
+      range.insertNode(span);
+      
+      const newRange = document.createRange();
+      newRange.setStart(span.firstChild, 1);
+      newRange.setEnd(span.firstChild, 1);
+      selection.removeAllRanges();
+      selection.addRange(newRange);
     } else {
       const span = document.createElement("span");
-      span.style.fontSize = `${size}px`;
+      span.style.fontSize = `${size}pt`;
       span.style.lineHeight = "1.2";
       try {
         range.surroundContents(span);
@@ -205,7 +250,13 @@ const Toolbar = ({ editorRef, fileId }) => {
       newRange.selectNodeContents(span);
       selection.addRange(newRange);
     }
+    
     if (fileId) localStorage.setItem(`editor-fontSize-${fileId}`, size);
+
+    // UNLOCK after a delay to allow the user to click and type
+    setTimeout(() => {
+      isApplyingSize.current = false;
+    }, 500);
   };
 
   const btnStyle = {
@@ -277,6 +328,8 @@ const Toolbar = ({ editorRef, fileId }) => {
         position: "relative", zIndex: 50
       }}
     >
+      <style>{hideArrowsCSS}</style>
+
       <input
         type="text"
         placeholder="Search features..."
@@ -360,16 +413,24 @@ const Toolbar = ({ editorRef, fileId }) => {
 
       <Divider />
 
-      <div style={{ position: "relative" }} ref={fontSizeMenuRef} title="Font Size">
+      <div style={{ position: "relative" }} ref={fontSizeMenuRef}>
         <div style={{ display: "flex", alignItems: "center" }}>
-          <button style={btnStyle} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} onMouseDown={(e) => {e.preventDefault(); updateFontSize(fontSize - 1)}}>-</button>
+          <button style={btnStyle} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} onMouseDown={(e) => {e.preventDefault(); updateFontSize(fontSize - 1)}} title="Decrease font size">-</button>
           <input
             type="number"
-            value={fontSize}
+            value={inputValue}
+            title="Font size"
             onClick={() => setIsFontSizeMenuOpen(!isFontSizeMenuOpen)}
             onChange={(e) => {
-              const val = parseInt(e.target.value);
-              if (val) updateFontSize(val);
+              isTypingFontSize.current = true; 
+              setInputValue(e.target.value);
+            }}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                    const val = parseInt(e.target.value);
+                    if (val) updateFontSize(val);
+                    e.target.blur();
+                }
             }}
             style={{ 
               width: "36px", 
@@ -378,14 +439,27 @@ const Toolbar = ({ editorRef, fileId }) => {
               background: "transparent", 
               fontSize: "14px", 
               outline: "none", 
-              cursor: "pointer",
+              cursor: "text",
               borderRadius: "4px",
-              margin: "0 2px"
+              margin: "0 2px",
             }}
-            onFocus={(e) => e.target.style.border = "1px solid #1a73e8"}
-            onBlur={(e) => e.target.style.border = "1px solid transparent"}
+            onFocus={(e) => {
+              isTypingFontSize.current = true;
+              e.target.style.border = "1px solid #1a73e8";
+              e.target.select();
+            }}
+            onBlur={(e) => {
+              e.target.style.border = "1px solid transparent";
+              const val = parseInt(e.target.value);
+              if (val) {
+                updateFontSize(val);
+              } else {
+                setInputValue(fontSize.toString()); 
+              }
+              setTimeout(() => { isTypingFontSize.current = false; }, 150); 
+            }}
           />
-          <button style={btnStyle} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} onMouseDown={(e) => {e.preventDefault(); updateFontSize(fontSize + 1)}}>+</button>
+          <button style={btnStyle} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} onMouseDown={(e) => {e.preventDefault(); updateFontSize(fontSize + 1)}} title="Increase font size">+</button>
         </div>
 
         {isFontSizeMenuOpen && (
