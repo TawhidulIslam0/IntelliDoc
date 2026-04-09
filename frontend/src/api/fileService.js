@@ -1,6 +1,8 @@
 const API_URL = "http://localhost:8000/api";
-const CHUNK_SIZE = 6 * 1024 * 1024; // Matches backend threshold 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB (10240 kb) limit
+// Increased chunk size to 10MB for better performance on large files
+const CHUNK_SIZE = 10 * 1024 * 1024; 
+// Increased max limit to be 100MB(102,400kb)
+const MAX_FILE_SIZE = 100 * 1024 * 1024; 
 
 // Fetch list of files for the current user - Updated to support search
 export const getFiles = async (profileId, folderId = null, search = "") => {
@@ -42,9 +44,9 @@ const validateFile = (file) => {
     throw new Error("Only TXT, PDF, and IDOC files are allowed");
   }
 
-  // Size Check
+  // Size Check - UPDATED to 100MB limit
   if (file.size > MAX_FILE_SIZE) {
-    throw new Error(`DEBUG_ERROR: File size ${file.size} exceeds limit ${MAX_FILE_SIZE}.`);
+    throw new Error(`File size ${file.size} exceeds the maximum allowed limit of 100MB.`);
   }
 };
 
