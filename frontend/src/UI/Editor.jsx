@@ -14,7 +14,7 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate }, ref) =
   const lastLoadedId = useRef(null);
   const docId = doc?.id || doc?.file_id;
 
-  // Expose rename to parent/navbar
+  // Expose rename and formatting commands to the parent/toolbar
   useImperativeHandle(ref, () => ({
     handleRename: async (newName) => {
       if (!docId) return;
@@ -26,6 +26,11 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate }, ref) =
       } catch (err) {
         setSaveStatus("error");
       }
+    },
+    //  Helper to apply commands specifically to the active page
+    applyFormatting: (command, value = null) => {
+      document.execCommand(command, false, value);
+      triggerAutoSave();
     }
   }));
 
@@ -82,8 +87,9 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate }, ref) =
     editable.style.cssText = `
       width: 100%; height: 100%; padding: ${PADDING}px; 
       outline: none; font-size: 11pt; font-family: "Arial", sans-serif; 
-      overflow: hidden; box-sizing: border-box; line-height: 1.15; 
+      overflow: hidden; box-sizing: border-box; line-height: 1.2; 
       color: #202124; word-break: break-word; white-space: pre-wrap;
+      cursor: text;
     `;
 
     editable.innerHTML = initialContent || "<div><br></div>";
@@ -91,6 +97,11 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate }, ref) =
     editable.addEventListener("input", (e) => {
       handleLayout(editable);
       triggerAutoSave();
+    });
+
+    // Ensure clicking back into the editor doesn't override the toolbar's pending state
+    editable.addEventListener("mouseup", () => {
+      document.dispatchEvent(new Event("selectionchange"));
     });
 
     // Copy/paste format
@@ -128,17 +139,18 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate }, ref) =
       while (el.scrollHeight > PAGE_HEIGHT && el.lastChild) {
         nextEditable.prepend(el.lastChild);
       }
-      nextEditable.focus();
+      
+      updatePageNumbers();
     }
 
     //  Flow Up (Pull text from next page if this page has room)
     const nextPage = el.parentElement.nextSibling;
     if (nextPage) {
       const nextEditable = nextPage.querySelector("[contentEditable]");
-      while (el.scrollHeight < PAGE_HEIGHT - 20 && nextEditable.firstChild) {
+      while (el.scrollHeight < PAGE_HEIGHT - 30 && nextEditable.firstChild) {
         el.appendChild(nextEditable.firstChild);
-        // If next page is now empty, remove it
-        if (nextEditable.textContent.trim() === "") {
+        
+        if (nextEditable.innerHTML === "" || nextEditable.innerHTML === "<div><br></div>") {
           nextPage.remove();
           updatePageNumbers();
           break;
@@ -154,7 +166,6 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate }, ref) =
     const range = selection.getRangeAt(0);
     const cleanText = el.textContent.trim();
     
-    // If cursor is at start and page is empty or just has a BR
     if (range.startOffset === 0 && (cleanText === "" || el.innerHTML === "<div><br></div>")) {
       const parentPage = el.parentElement;
       const prevPage = parentPage.previousSibling;
@@ -167,7 +178,6 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate }, ref) =
       parentPage.remove();
       updatePageNumbers();
       
-      // Snap to end of previous page
       const newRange = document.createRange();
       newRange.selectNodeContents(prevEditable);
       newRange.collapse(false);
