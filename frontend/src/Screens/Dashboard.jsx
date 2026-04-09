@@ -7,7 +7,8 @@ import { getFolders, createFolder, deleteFolder, renameFolder } from "../api/fol
 import uploadIcon from "../assets/uploadbutton.png";
 import folderIcon from "../assets/folderbutton.png";
 import { ProfileContext } from "../UI/ProfileContext"; 
-import ContextMenu from "../UI/ContextMenu"; // New Import for the menu
+import ContextMenu from "../UI/ContextMenu"; 
+import FileProgressBar from "../UI/FileProgressBar";
 
 // Helper function to remove extensions for display (e.g. .idoc, .pdf)
 const formatDisplayName = (name) => {
@@ -163,6 +164,14 @@ const DashBoard = ({ setDocuments }) => {
   const [menuConfig, setMenuConfig] = useState(null); // Menu state
   const [draggedFile, setDraggedFile] = useState(null);
 
+  // New state for handling upload progress tracking
+  const [uploadInfo, setUploadInfo] = useState({
+    progress: 0,
+    fileName: '',
+    isUploading: false,
+    error: null
+  });
+
   // Derive currentFolderId from the top of the folderStack
   const currentFolderId = folderStack.length > 0 ? folderStack[folderStack.length - 1].id : null;
   // State to handle hover for the "Blank document" card
@@ -277,17 +286,17 @@ const DashBoard = ({ setDocuments }) => {
             const finalName = item.name.endsWith(".idoc") ? `${newName}.idoc` : newName;
             const updatedFile = await renameFile(item.id, finalName);
             
-            // 1. Update Dashboard's local fetchedDocuments state
+            //  Update Dashboard's local fetchedDocuments state
             setFetchedDocuments(prev => prev.map(f => f.id === item.id ? { ...f, name: updatedFile.name } : f));
             
-            // 2. Update the parent documents state (setDocuments prop) so the Editor matches instantly
+            //  Update the parent documents state (setDocuments prop) so the Editor matches instantly
             if (setDocuments) {
               setDocuments(prev => prev.map(doc => 
                 doc.id === item.id ? { ...doc, name: updatedFile.name } : doc
               ));
             }
 
-            // 3. Update document.title if the renamed file is the one open
+            //  Update document.title if the renamed file is the one open
             if (window.location.pathname.includes(item.id)) {
                 document.title = `${newName} - IntelliDoc`;
             }
@@ -374,7 +383,7 @@ const DashBoard = ({ setDocuments }) => {
     }
   };
 
-  // File selection
+  // File selection with increased limit (100MB)
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (!selectedFile) return;
@@ -383,8 +392,10 @@ const DashBoard = ({ setDocuments }) => {
       alert("Only TXT, PDF, Word, and Images allowed.");
       return;
     }
-    if (selectedFile.size > 10 * 1024 * 1024) {
-      alert("File is too large.");
+    
+    // Updated to 100 MB
+    if (selectedFile.size > 100 * 1024 * 1024) {
+      alert("File is too large (Max 100MB).");
       return;
     }
     setFile(selectedFile);
@@ -395,15 +406,32 @@ const DashBoard = ({ setDocuments }) => {
     if (!file) return alert("Please select a file first.");
     try {
       setUploading(true);
-      await uploadFile(file, currentProfile.id, currentFolderId);
+      // Initialize the progress bar state
+      setUploadInfo({ 
+        progress: 0, 
+        fileName: file.name, 
+        isUploading: true, 
+        error: null 
+      });
+
+      // Passing the callback to the uploadFile API to update the state
+      await uploadFile(file, currentProfile.id, currentFolderId, (percent) => {
+        setUploadInfo(prev => ({ ...prev, progress: percent }));
+      });
+
       alert("File uploaded successfully");
       setFile(null);
       await fetchFiles(currentFolderId);
     } catch (err) {
       console.error(err);
+      setUploadInfo(prev => ({ ...prev, error: err.message, isUploading: false }));
       alert("File upload failed: " + err.message);
     } finally {
       setUploading(false);
+      // Wait briefly so user sees the 100% completion before hiding the bar
+      setTimeout(() => {
+        setUploadInfo(prev => ({ ...prev, isUploading: false }));
+      }, 1500);
     }
   };
 
@@ -576,6 +604,15 @@ const DashBoard = ({ setDocuments }) => {
 
           {/* Files */}
           <span style={{ fontWeight: 500, fontSize: 16, marginTop: 40, display: "block" }}>Files</span>
+          
+          {/* Progress Bar Display on top of Files Section */}
+          <FileProgressBar 
+            progress={uploadInfo.progress}
+            fileName={uploadInfo.fileName}
+            isUploading={uploadInfo.isUploading}
+            error={uploadInfo.error}
+          />
+
           {uploadedFiles.length === 0 ? (
             <div style={{ marginTop: 20, textAlign: "center", color: "#5f6368" }}>
               No files yet. Upload your first file.
@@ -584,7 +621,8 @@ const DashBoard = ({ setDocuments }) => {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 150px)", gap: 25, marginTop: 20 }}>
               {uploadedFiles.map((doc) => (
                 <FileItem key={doc.id} doc={doc} onOpenDoc={handleOpenDoc} onOpenMenu={handleOpenMenu} isRecentDoc={false} onDragStart={handleDragStart} />
-              ))}
+              ))
+              }
             </div>
           )}
         </div>
