@@ -88,12 +88,12 @@ async def initiate_upload(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)]
 ):
-    # Allow  max size to be 10mb (10240 kb)
-    MAX_ALLOWED_SIZE = 10 * 1024 * 1024  
+    #  Allow max size to be 100MB(102,400kb)
+    MAX_ALLOWED_SIZE = 100 * 1024 * 1024  
     if payload.size_bytes > MAX_ALLOWED_SIZE:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="File is too large. Maximum allowed size is 10MB."
+            detail="File is too large. Maximum allowed size is 100MB."
         )
 
     # Check that the profile belongs to the current user
