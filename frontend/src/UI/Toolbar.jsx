@@ -82,6 +82,7 @@ const Toolbar = ({ editorRef, fileId }) => {
   const skipSelectionUpdate = useRef(false);
   const isTypingFontSize = useRef(false); 
   const isApplyingSize = useRef(false); // NEW: Lock to prevent cursor detection from reverting size
+  const savedRangeRef = useRef(null);
 
   const [activeFormats, setActiveFormats] = useState({
     bold: false,
@@ -141,12 +142,16 @@ const Toolbar = ({ editorRef, fileId }) => {
         let node = selection.anchorNode;
         if (node && node.nodeType === 3) node = node.parentElement;
 
-        if (node) {
+        const isEditorSelection = node?.closest?.('[contenteditable="true"]');
+
+        if (isEditorSelection) {
+          savedRangeRef.current = selection.getRangeAt(0).cloneRange();
+
           const computedStyle = window.getComputedStyle(node);
           const sizeInPx = parseFloat(computedStyle.fontSize);
           const sizeInPt = Math.round(sizeInPx * 0.75);
           setFontSize(sizeInPt);
-          setInputValue(sizeInPt.toString()); 
+          setInputValue(sizeInPt.toString());
         }
       }
 
@@ -197,13 +202,29 @@ const Toolbar = ({ editorRef, fileId }) => {
     };
   }, [fileId]);
 
+  const restoreSavedSelection = () => {
+    const selection = window.getSelection();
+    if (!selection || !savedRangeRef.current) return false;
+
+    selection.removeAllRanges();
+    selection.addRange(savedRangeRef.current.cloneRange());
+    return true;
+  };
+  
   const applyCommand = (command, value = null) => {
-    if (editorRef?.current) editorRef.current.focus();
+    restoreSavedSelection();
+
     let finalValue = value;
     if (command === "fontName" && value && value.includes(" ")) {
       finalValue = `'${value}'`;
     }
+
     document.execCommand(command, false, finalValue);
+
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
+      savedRangeRef.current = selection.getRangeAt(0).cloneRange();
+    }
   };
 
   const updateFontSize = (newSize) => {
@@ -214,11 +235,20 @@ const Toolbar = ({ editorRef, fileId }) => {
     
     setFontSize(size);
     setInputValue(size.toString());
-    
-    if (editorRef?.current) editorRef.current.focus();
-    
+
     const selection = window.getSelection();
-    if (!selection.rangeCount) return;
+    selection.removeAllRanges();
+    if (savedRangeRef.current) {
+      selection.addRange(savedRangeRef.current.cloneRange());
+    }
+
+    if (!selection.rangeCount) {
+      setTimeout(() => {
+        isApplyingSize.current = false;
+      }, 500);
+      return;
+    }
+
     const range = selection.getRangeAt(0);
 
     if (selection.isCollapsed) {
@@ -234,6 +264,7 @@ const Toolbar = ({ editorRef, fileId }) => {
       newRange.setEnd(span.firstChild, 1);
       selection.removeAllRanges();
       selection.addRange(newRange);
+      savedRangeRef.current = newRange.cloneRange();
     } else {
       const span = document.createElement("span");
       span.style.fontSize = `${size}pt`;
@@ -249,6 +280,7 @@ const Toolbar = ({ editorRef, fileId }) => {
       const newRange = document.createRange();
       newRange.selectNodeContents(span);
       selection.addRange(newRange);
+      savedRangeRef.current = newRange.cloneRange();
     }
     
     if (fileId) localStorage.setItem(`editor-fontSize-${fileId}`, size);
@@ -426,11 +458,10 @@ const Toolbar = ({ editorRef, fileId }) => {
               setInputValue(e.target.value);
             }}
             onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                    const val = parseInt(e.target.value);
-                    if (val) updateFontSize(val);
-                    e.target.blur();
-                }
+              if (e.key === "Enter") {
+                e.preventDefault();
+                e.target.blur();
+              }
             }}
             style={{ 
               width: "36px", 
