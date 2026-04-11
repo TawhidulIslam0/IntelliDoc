@@ -2,7 +2,7 @@
 IntelliDoc is an AI-powered document management system that enables semantic search over files. 
 Instead of relying on file names or exact keywords, IntelliDoc understands the meaning of documents using vector embeddings, allowing users to retrieve files based on context.
 
-Created by Tawhidul Islam, Mark Kim, Brinta Kandu, and Wu Jia Jun 
+Created by Tawhidul Islam, Mark Kim, Brinta Kundu, and Wu Jia Jun 
 
 # Prerequisites
 - [Docker Desktop](https://www.docker.com/products/docker-desktop) installed and running  
