@@ -14,8 +14,6 @@ export const getFiles = async (profileId, folderId = null, search = "") => {
   const params = new URLSearchParams();
   params.append("profile_id", profileId);
 
-  // If searching ignore the folder_id to perform a global search
-  // If not searching append the folder_id to navigate normally
   if (search) {
     params.append("search", search);
   } else if (folderId) {
@@ -35,22 +33,18 @@ export const getFiles = async (profileId, folderId = null, search = "") => {
   return response.json();
 };
 
-// Type + Size 
+// Type + Size Validation
 const validateFile = (file) => {
   const name = file.name.toLowerCase();
-  
-  // Extension Check
   if (!(name.endsWith(".txt") || name.endsWith(".pdf") || name.endsWith(".idoc"))) {
     throw new Error("Only TXT, PDF, and IDOC files are allowed");
   }
-
-  // Size Check - UPDATED to 100MB limit
   if (file.size > MAX_FILE_SIZE) {
     throw new Error(`File size ${file.size} exceeds the maximum allowed limit of 100MB.`);
   }
 };
 
-// Upload file using presigned URL (Supports both Chunked and Standard)
+// Upload file using presigned URL
 export const uploadFile = async (file, profileId, folderId = null, progressCallback = null) => {
   validateFile(file);
   const token = localStorage.getItem("token");
@@ -58,7 +52,6 @@ export const uploadFile = async (file, profileId, folderId = null, progressCallb
   if (!profileId) profileId = localStorage.getItem("currentProfileId");
   if (!profileId) throw new Error("No profile selected");
 
-  // Initiate Upload
   const initiateResp = await fetch(`${API_URL}/files/initiate-upload`, {
     method: "POST",
     headers: {
@@ -75,14 +68,12 @@ export const uploadFile = async (file, profileId, folderId = null, progressCallb
   });
 
   if (!initiateResp.ok) {
-    // specific error message from FastAPI (like "File too large")
     const errData = await initiateResp.json().catch(() => ({ detail: "Failed to initiate upload" }));
     throw new Error(errData.detail || "Failed to initiate upload");
   }
 
   const { presigned_url, file_id, upload_id } = await initiateResp.json();
 
-  // Handle Upload (Chunked vs Single)
   if (upload_id) {
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
     const completedParts = [];
@@ -93,7 +84,6 @@ export const uploadFile = async (file, profileId, folderId = null, progressCallb
       const end = Math.min(start + CHUNK_SIZE, file.size);
       const chunk = file.slice(start, end);
 
-      // Get presigned URL for this specific chunk
       const chunkUrlResp = await fetch(`${API_URL}/files/presign-chunk`, {
         method: "POST",
         headers: {
@@ -108,26 +98,17 @@ export const uploadFile = async (file, profileId, folderId = null, progressCallb
       });
 
       const { presigned_url: chunkUrl } = await chunkUrlResp.json();
-
-      // Upload chunk to S3
-      const s3Resp = await fetch(chunkUrl, {
-        method: "PUT",
-        body: chunk,
-      });
-
+      const s3Resp = await fetch(chunkUrl, { method: "PUT", body: chunk });
       if (!s3Resp.ok) throw new Error(`Chunk ${partNumber} upload failed`);
 
-      // ETag is required for completion
       const etag = s3Resp.headers.get("ETag");
       completedParts.push({ ETag: etag, PartNumber: partNumber });
 
-      // Notify UI of progress
       if (progressCallback) {
         progressCallback(Math.round(((i + 1) / totalChunks) * 100));
       }
     }
 
-    // Finalize Multipart
     const completeResp = await fetch(`${API_URL}/files/complete-chunked-upload`, {
       method: "POST",
       headers: {
@@ -144,7 +125,6 @@ export const uploadFile = async (file, profileId, folderId = null, progressCallb
     if (!completeResp.ok) throw new Error("Failed to finalize chunked upload");
     
   } else {
-    // Single upload
     const s3Resp = await fetch(presigned_url, {
       method: "PUT",
       headers: { "Content-Type": file.type },
@@ -159,7 +139,6 @@ export const uploadFile = async (file, profileId, folderId = null, progressCallb
     });
 
     if (!completeResp.ok) throw new Error("Failed to finalize upload");
-    
     if (progressCallback) progressCallback(100);
   }
 
@@ -172,22 +151,18 @@ export const getPreviewUrl = async (fileId, profileId) => {
   if (!profileId) profileId = localStorage.getItem("currentProfileId");
   const url = new URL(`${API_URL}/files/${fileId}/preview`);
   url.searchParams.append("profile_id", profileId);
-  const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (!response.ok) throw new Error("Failed to get preview URL");
   return response.json();
 };
 
-// Download URL Generator
+// Download
 export const getDownloadUrl = async (fileId, profileId) => {
   const token = localStorage.getItem("token");
   if (!profileId) profileId = localStorage.getItem("currentProfileId");
   const url = new URL(`${API_URL}/files/${fileId}/download`);
   url.searchParams.append("profile_id", profileId);
-  const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (!response.ok) throw new Error("Failed to download URL");
   return response.json();
 };
@@ -220,24 +195,9 @@ export const renameFile = async (fileId, newName) => {
 
   if (!response.ok) {
     const errData = await response.json().catch(() => ({ detail: "Failed to rename file" }));
-    console.error("rename file error:", errData);
     throw new Error(errData.detail || "Failed to rename file");
   }
   return response.json(); 
-};
-
-// Download trigger
-export const downloadFile = async (fileId, fileName, profileId) => {
-  const token = localStorage.getItem("token");
-  if (!profileId) profileId = localStorage.getItem("currentProfileId");
-  const url = new URL(`${API_URL}/files/${fileId}/download`);
-  url.searchParams.append("profile_id", profileId);
-  const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!response.ok) throw new Error("Failed to download file");
-  const data = await response.json();
-  window.open(data.url, "_blank");
 };
 
 // Create blank doc
@@ -257,17 +217,14 @@ export const createBlankDoc = async (name, profileId, folderId = null) => {
       folder_id: folderId || null,
     }),
   });
-  if (!response.ok) {
-    const err = await response.text();
-    console.error("create blank doc error:", err);
-    throw new Error("Failed to create blank document");
-  }
+  if (!response.ok) throw new Error("Failed to create blank document");
   return response.json();
 };
 
-// Auto-save
-export const updateFileContent = async (fileId, content) => {
+// updateFileContent to ensure consistent JSON formatting
+export const updateFileContent = async (fileId, content, tabId = null) => {
   const token = localStorage.getItem("token");
+  
   const safeContent = {
     pages: Array.isArray(content?.pages)
       ? content.pages.map(p => p ?? "")
@@ -275,44 +232,95 @@ export const updateFileContent = async (fileId, content) => {
         ? [content]
         : [""]
   };
-  const response = await fetch(`${API_URL}/files/${fileId}/content`, {
-    method: "PUT",
+  
+  const url = tabId 
+    ? `${API_URL}/tabs/${tabId}` 
+    : `${API_URL}/files/${fileId}/content`;
+
+  const response = await fetch(url, {
+    method: tabId ? "PATCH" : "PUT",
     headers: {
       "Authorization": `Bearer ${token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ content: safeContent }),
+
+    body: JSON.stringify(tabId ? { content: JSON.stringify(safeContent) } : { content: safeContent }),
   });
-  if (!response.ok) {
-    const err = await response.text();
-    console.error("auto-save error:", err);
-    throw new Error("Failed to auto-save document");
-  }
+  if (!response.ok) throw new Error("Failed to auto-save document");
   return response.json();
 };
 
 export const moveFile = async (fileId, folderId = null, profileId) => {
   const token = localStorage.getItem("token");
-
   if (!profileId) profileId = localStorage.getItem("currentProfileId");
-  if (!profileId) throw new Error("No profile selected");
-
   const response = await fetch(`${API_URL}/files/${fileId}/move`, {
     method: "PATCH",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      profile_id: profileId,
-      folder_id: folderId || null,
-    }),
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ profile_id: profileId, folder_id: folderId || null }),
   });
-
-  if (!response.ok) {
-    const errData = await response.json().catch(() => ({ detail: "Failed to move file" }));
-    throw new Error(errData.detail || "Failed to move file");
-  }
-
+  if (!response.ok) throw new Error("Failed to move file");
   return response.json();
+};
+
+// Content Retrieval
+export const getFileContent = async (fileId, tabId = null) => {
+  const token = localStorage.getItem("token");
+  const url = tabId ? `${API_URL}/tabs/${tabId}` : `${API_URL}/files/${fileId}/content`;
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!response.ok) throw new Error("Failed to fetch content");
+  return response.json();
+};
+
+// Tab Management
+export const getTabs = async (fileId) => {
+  const token = localStorage.getItem("token");
+  const response = await fetch(`${API_URL}/tabs/${fileId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error("Failed to fetch tabs");
+  return response.json();
+};
+
+// Create Tab 
+export const createTab = async (fileId) => {
+  const token = localStorage.getItem("token");
+  const response = await fetch(`${API_URL}/tabs/${fileId}`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }
+  });
+  if (!response.ok) throw new Error("Failed to create tab");
+  return response.json();
+};
+
+// Duplicate Tab
+export const duplicateTab = async (fileId, tabId) => {
+  const token = localStorage.getItem("token");
+  const response = await fetch(`${API_URL}/tabs/${fileId}/duplicate/${tabId}`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }
+  });
+  if (!response.ok) throw new Error("Failed to duplicate tab");
+  return response.json();
+};
+
+export const updateTab = async (tabId, updateData) => {
+  const token = localStorage.getItem("token");
+  const response = await fetch(`${API_URL}/tabs/${tabId}`, {
+    method: "PATCH",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(updateData),
+  });
+  if (!response.ok) throw new Error("Failed to update tab");
+  return response.json();
+};
+
+// Delete Tab
+export const deleteTab = async (tabId) => {
+  const token = localStorage.getItem("token");
+  const response = await fetch(`${API_URL}/tabs/${tabId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error("Failed to delete tab");
+  return true;
 };
