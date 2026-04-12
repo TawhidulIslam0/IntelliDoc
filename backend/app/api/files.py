@@ -168,7 +168,7 @@ async def initiate_upload(
             # Generate standard presigned URL for upload
             presigned_url = s3.generate_presigned_url(
                 "put_object",
-                params={
+                Params={
                     "Bucket": BUCKET_NAME,
                     "Key": s3_key,
                     "ContentType": payload.mime_type

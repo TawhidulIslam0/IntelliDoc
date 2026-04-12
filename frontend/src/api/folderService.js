@@ -83,6 +83,38 @@ export const renameFolder = async (folderId, newName) => {
   return response.json();
 };
 
+// Download a folder with all its contents
+export const downloadFolder = async (folderId, format = "pdf", profileId) => {
+  const token = localStorage.getItem("token");
+
+  if (!profileId) profileId = localStorage.getItem("currentProfileId");
+  if (!profileId) throw new Error("No profile selected");
+
+  const url = new URL(`${API_URL}/files/folders/${folderId}/export`);
+  url.searchParams.append("format", format);
+  url.searchParams.append("profile_id", profileId);
+
+  const response = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("Download folder error:", errorText);
+    throw new Error("Failed to download folder");
+  }
+
+  const blob = await response.blob();
+  const downloadUrl = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = downloadUrl;
+  a.download = "folder.zip";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(downloadUrl);
+};
+
 // Delete a folder
 export const deleteFolder = async (folderId, profileId) => {
   const token = localStorage.getItem("token");

@@ -2,9 +2,10 @@ import io
 import json
 import uuid
 import os
-
 import boto3
 import html2text
+import zipfile
+
 from docx import Document
 from bs4 import BeautifulSoup
 from xhtml2pdf import pisa
@@ -22,6 +23,7 @@ from app.api.users import get_current_user
 from app.models.file import File
 from app.models.user import User
 from app.models.profile import Profile
+from app.models.folder import Folder
 
 load_dotenv()
 
@@ -184,4 +186,124 @@ async def export_file(
         io.BytesIO(data),
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+def _convert_pages(pages: list[str], format: str) -> tuple[bytes, str, str]:
+    if format == "md":
+        return idoc_to_markdown(pages).encode("utf-8"), "text/markdown", "md"
+    elif format == "docx":
+        return (
+            idoc_to_docx(pages),
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "docx",
+        )
+    else:  # pdf
+        return idoc_to_pdf(pages), "application/pdf", "pdf"
+
+def _write_folder_to_zip(
+    db: Session,
+    zip_file: zipfile.ZipFile,
+    folder: Folder,
+    current_user: User,
+    profile_id: uuid.UUID,
+    format: str,
+    parent_path: str = "",
+) -> None:
+    folder_path = f"{parent_path}{folder.name}/"
+
+    files = db.scalars(
+        select(File).where(
+            File.owner_id == current_user.id,
+            File.profile_id == profile_id,
+            File.folder_id == folder.id
+        )
+    ).all()
+
+    for file in files:
+        try:
+            response = s3.get_object(Bucket=BUCKET_NAME, Key=file.s3_key)
+            raw_data = response["Body"].read()
+        except ClientError:
+            continue
+
+        # Keep every file in its original format when downloading a folder.
+        zip_file.writestr(f"{folder_path}{file.name}", raw_data)
+
+    subfolders = db.scalars(
+        select(Folder).where(
+            Folder.owner_id == current_user.id,
+            Folder.profile_id == profile_id,
+            Folder.parent_id == folder.id
+        )
+    ).all()
+
+    for subfolder in subfolders:
+        _write_folder_to_zip(
+            db=db,
+            zip_file=zip_file,
+            folder=subfolder,
+            current_user=current_user,
+            profile_id=profile_id,
+            format=format,
+            parent_path=folder_path,
+        )
+
+@router.get("/folders/{folder_id}/export")
+async def export_folder(
+    folder_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    format: str = Query(..., description="Export format: MD, DOCX, or PDF"),
+    profile_id: Optional[uuid.UUID] = None,
+):
+    if format not in SUPPORTED_FORMATS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported format '{format}'. Choose from: {', '.join(SUPPORTED_FORMATS)}"
+        )
+
+    # Default to the user's default profile if none provided
+    if not profile_id:
+        profile = db.scalar(
+            select(Profile).where(
+                Profile.owner_id == current_user.id,
+                Profile.is_default == True
+            )
+        )
+        if not profile:
+            raise HTTPException(status_code=404, detail="Default profile not found")
+        profile_id = profile.id
+
+    folder = db.scalar(
+        select(Folder).where(
+            Folder.id == folder_id,
+            Folder.owner_id == current_user.id,
+            Folder.profile_id == profile_id
+        )
+    )
+
+    if not folder:
+        raise HTTPException(status_code=404, detail="Folder not found")
+
+    zip_buffer = io.BytesIO()
+
+    try:
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+            _write_folder_to_zip(
+                db=db,
+                zip_file=zip_file,
+                folder=folder,
+                current_user=current_user,
+                profile_id=profile_id,
+                format=format,
+            )
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to export folder")
+
+    zip_buffer.seek(0)
+
+    return StreamingResponse(
+        zip_buffer,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{folder.name}.zip"'}
     )

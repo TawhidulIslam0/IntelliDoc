@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useContext, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { uploadFile, getPreviewUrl, deleteFile, createBlankDoc, renameFile, moveFile } from "../api/fileService"; 
-import { getFolders, createFolder, deleteFolder, renameFolder } from "../api/folderService";
+import { getFolders, createFolder, deleteFolder, renameFolder, downloadFolder } from "../api/folderService";
 import uploadIcon from "../assets/uploadbutton.png";
 import folderIcon from "../assets/folderbutton.png";
 import { ProfileContext } from "../UI/ProfileContext"; 
@@ -268,8 +268,15 @@ const DashBoard = ({ setDocuments }) => {
     if (action === 'delete') {
       menuConfig.type === 'folder' ? handleDeleteFolder(item.id) : handleDeleteFile(item.id);
     } else if (action === 'download') {
-      if (menuConfig.type !== 'folder') {
-        handleDownloadFile(item.id, item.name);
+      try {
+        if (menuConfig.type === 'folder') {
+          await downloadFolder(item.id);
+        } else {
+          await handleDownloadFile(item.id, item.name);
+        }
+      } catch (err) {
+        console.error("Download failed:", err);
+        alert("Failed to download item");
       }
     } else if (action === 'rename') {
       const currentName = formatDisplayName(item.name);

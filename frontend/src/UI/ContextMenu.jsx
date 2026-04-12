@@ -91,7 +91,7 @@ export default function ContextMenu({ x, y, type, item, onClose, onAction }) {
         )}
 
         {/* DOWNLOAD */}
-        {(isDoc || isFile) && (
+        {(isDoc || isFile || isFolder) && (
           <div 
             style={itemStyle} 
             className="context-menu-item"
