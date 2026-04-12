@@ -19,6 +19,7 @@ from app.models.file import File
 from app.models.user import User
 from app.models.profile import Profile
 from app.models.folder import Folder
+from app.models.tab import Tab 
 
 # Load environment variables from .env
 load_dotenv()
@@ -72,6 +73,10 @@ class CreateBlankDocRequest(BaseModel):
 
 
 class UpdateFileContentRequest(BaseModel):
+    content: dict
+
+
+class UpdateTabRequest(BaseModel):
     content: dict
     
 class RenameFileRequest(BaseModel):
@@ -163,7 +168,7 @@ async def initiate_upload(
             # Generate standard presigned URL for upload
             presigned_url = s3.generate_presigned_url(
                 "put_object",
-                Params={
+                params={
                     "Bucket": BUCKET_NAME,
                     "Key": s3_key,
                     "ContentType": payload.mime_type
@@ -310,6 +315,18 @@ async def create_blank_doc(
     )
 
     db.add(new_file)
+
+    #  Automatically create "Tab 1" (default)for internal document files
+    first_tab = Tab(
+        id=uuid.uuid4(),
+        file_id=file_id,
+        name="Tab 1",
+        content="",
+        created_at=now,
+        updated_at=now
+    )
+    db.add(first_tab)
+
     db.commit()
     db.refresh(new_file)
 
@@ -551,15 +568,55 @@ async def get_file_content(
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
+    # Fetch tabs associated with this document
+    tabs = db.scalars(select(Tab).where(Tab.file_id == file_id).order_by(Tab.created_at.asc())).all()
+
     try:
         response = s3.get_object(Bucket=BUCKET_NAME, Key=file.s3_key)
         content_bytes = response["Body"].read().decode("utf-8")
         content_json = json.loads(content_bytes)
-        return {"content": content_json}
+        return {
+            "content": content_json,
+            "tabs": [{"id": str(t.id), "name": t.name, "content": t.content} for t in tabs]
+        }
     except ClientError as e:
         if e.response["Error"]["Code"] == "NoSuchKey":
-            return {"content": {"pages": [""]}}
+            return {
+                "content": {"pages": [""]},
+                "tabs": [{"id": str(t.id), "name": t.name, "content": t.content} for t in tabs]
+            }
         raise HTTPException(status_code=500, detail="Failed to fetch from S3")
+
+# Fetch tabs specifically
+@router.get("/{file_id}/tabs")
+async def get_tabs(
+    file_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)]
+):
+    # Verify file ownership
+    file = db.scalar(
+        select(File).where(File.id == file_id, File.owner_id == current_user.id)
+    )
+
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # Fetch all tabs for this specific file
+    tabs = db.scalars(
+        select(Tab).where(Tab.file_id == file_id).order_by(Tab.created_at.asc())
+    ).all()
+
+    return [
+        {
+            "id": str(t.id),
+            "name": t.name,
+            "content": t.content,
+            "created_at": t.created_at,
+            "updated_at": t.updated_at
+        }
+        for t in tabs
+    ]
 
 
 # Auto-save / sync file content
@@ -594,11 +651,62 @@ async def update_file_content(
         raise HTTPException(status_code=500, detail="Failed to sync content to storage")
 
     now = datetime.now(timezone.utc).isoformat()
+    text_content = json.dumps(content) # Store as JSON string to maintain structure
+    
+    tab = db.scalar(
+        select(Tab).where(Tab.file_id == file_id).order_by(Tab.created_at.asc()).limit(1)
+    )
+    
+    if tab:
+        tab.content = text_content
+        tab.updated_at = now
+
     file.updated_at = now
     file.size_bytes = len(json.dumps(content).encode("utf-8"))
+    
     db.commit()
 
     return {"message": "Sync successful", "updated_at": now}
+
+# Tab Updates
+@router.patch("/tabs/{tab_id}")
+async def update_tab_content(
+    tab_id: uuid.UUID,
+    payload: UpdateTabRequest,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)]
+):
+    # Find the tab and verify the owner via the linked file
+    tab = db.scalar(
+        select(Tab)
+        .join(File, Tab.file_id == File.id)
+        .where(Tab.id == tab_id, File.owner_id == current_user.id)
+    )
+
+    if not tab:
+        raise HTTPException(status_code=404, detail="Tab not found")
+
+    # Sync content to the database
+    now = datetime.now(timezone.utc).isoformat()
+    tab.content = json.dumps(payload.content)
+    tab.updated_at = now
+
+    # Also sync to S3 so the master file is always current
+    file = db.get(File, tab.file_id)
+    if file:
+        try:
+            s3.put_object(
+                Bucket=BUCKET_NAME,
+                Key=file.s3_key,
+                Body=json.dumps(payload.content),
+                ContentType="application/json"
+            )
+            file.updated_at = now
+        except ClientError:
+            pass # DB update remains even if S3 is momentarily unreachable
+
+    db.commit()
+    return {"message": "Tab updated successfully"}
 
 # move file to different folder
 @router.patch("/{file_id}/move")
