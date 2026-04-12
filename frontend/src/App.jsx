@@ -31,7 +31,7 @@ export default function App() {
 
   const [tabs, setTabs] = useState([]);
   const [activeTabId, setActiveTabId] = useState(null);
-
+  const [currentContent, setCurrentContent] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState("saved");
@@ -103,7 +103,6 @@ export default function App() {
     const fetchTabs = async () => {
       if (!urlId) return;
 
-      // Reset state immediately so old content doesn't show
       setTabs([]); 
       setActiveTabId(null);
 
@@ -119,8 +118,6 @@ export default function App() {
           if (data.length > 0) {
             setActiveTabId(data[0].id);
           }
-        } else if (res.status === 404) {
-           console.warn("No tabs found for this document.");
         }
       } catch (err) {
         console.error("Failed to fetch tabs:", err);
@@ -130,7 +127,7 @@ export default function App() {
     fetchTabs();
 
     return () => {
-      isMounted = false; // Clean up to avoid setting state on unmounted component
+      isMounted = false; 
     };
   }, [urlId]); 
 
@@ -231,6 +228,8 @@ export default function App() {
                       setTabs={setTabs} 
                       activeTabId={activeTabId} 
                       setActiveTabId={setActiveTabId} 
+                      // Pass currentContent to Sidebar
+                      currentContent={currentContent} 
                     />
                     <Editor
                       key={urlId} 
@@ -238,6 +237,8 @@ export default function App() {
                       setSaveStatus={setSaveStatus}
                       activeTabId={activeTabId}
                       tabs={tabs}
+                      // Connect the content change to the parent state
+                      onContentChange={(content) => setCurrentContent(content)}
                       onDocUpdate={(updatedDoc) => {
                         if (String(updatedDoc.id || updatedDoc.file_id) === String(urlId)) {
                           setDocuments(prev => prev.map(d => 
