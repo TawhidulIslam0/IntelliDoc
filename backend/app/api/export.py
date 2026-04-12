@@ -194,7 +194,6 @@ def _write_folder_to_zip(
     folder: Folder,
     current_user: User,
     profile_id: uuid.UUID,
-    format: str,
     parent_path: str = "",
 ) -> None:
     folder_path = f"{parent_path}{folder.name}/"
@@ -232,7 +231,6 @@ def _write_folder_to_zip(
             folder=subfolder,
             current_user=current_user,
             profile_id=profile_id,
-            format=format,
             parent_path=folder_path,
         )
 
@@ -241,15 +239,8 @@ async def export_folder(
     folder_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-    format: str = Query(..., description="Export format: MD, DOCX, or PDF"),
     profile_id: Optional[uuid.UUID] = None,
 ):
-    if format not in SUPPORTED_FORMATS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported format '{format}'. Choose from: {', '.join(SUPPORTED_FORMATS)}"
-        )
-
     # Default to the user's default profile if none provided
     if not profile_id:
         profile = db.scalar(
@@ -283,7 +274,6 @@ async def export_folder(
                 folder=folder,
                 current_user=current_user,
                 profile_id=profile_id,
-                format=format,
             )
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to export folder")

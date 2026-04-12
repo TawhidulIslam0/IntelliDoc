@@ -84,14 +84,13 @@ export const renameFolder = async (folderId, newName) => {
 };
 
 // Download a folder with all its contents
-export const downloadFolder = async (folderId, format = "pdf", profileId) => {
+export const downloadFolder = async (folderId, profileId) => {
   const token = localStorage.getItem("token");
 
   if (!profileId) profileId = localStorage.getItem("currentProfileId");
   if (!profileId) throw new Error("No profile selected");
 
   const url = new URL(`${API_URL}/files/folders/${folderId}/export`);
-  url.searchParams.append("format", format);
   url.searchParams.append("profile_id", profileId);
 
   const response = await fetch(url.toString(), {
