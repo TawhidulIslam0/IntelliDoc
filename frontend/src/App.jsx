@@ -29,6 +29,9 @@ export default function App() {
     return JSON.parse(sessionStorage.getItem("activeDoc")) || null;
   });
 
+  const [tabs, setTabs] = useState([]);
+  const [activeTabId, setActiveTabId] = useState(null);
+
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState("saved");
@@ -36,12 +39,10 @@ export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Persist documents
   useEffect(() => {
     localStorage.setItem("documents", JSON.stringify(documents));
   }, [documents]);
 
-  // Persist active document
   useEffect(() => {
     if (activeDoc) {
       sessionStorage.setItem("activeDoc", JSON.stringify(activeDoc));
@@ -50,7 +51,6 @@ export default function App() {
     }
   }, [activeDoc]);
 
-  // Fetch user
   useEffect(() => {
     const fetchCurrentUser = async () => {
       const token = localStorage.getItem("token");
@@ -80,7 +80,6 @@ export default function App() {
     fetchCurrentUser();
   }, [navigate]);
 
-  // Helper to find document by ID 
   const getDocById = (docId) => {
     if (!docId) return null;
     return documents.find(
@@ -88,7 +87,6 @@ export default function App() {
     );
   };
 
-  // Sync activeDoc from URL 
   const urlId = location.pathname.split("/editor/")[1];
 
   useEffect(() => {
@@ -99,7 +97,43 @@ export default function App() {
     }
   }, [urlId, documents]);
 
-  // Open document from dashboard
+  useEffect(() => {
+    let isMounted = true; 
+
+    const fetchTabs = async () => {
+      if (!urlId) return;
+
+      // Reset state immediately so old content doesn't show
+      setTabs([]); 
+      setActiveTabId(null);
+
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(`http://127.0.0.1:8000/api/files/${urlId}/tabs`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (res.ok && isMounted) {
+          const data = await res.json();
+          setTabs(data);
+          if (data.length > 0) {
+            setActiveTabId(data[0].id);
+          }
+        } else if (res.status === 404) {
+           console.warn("No tabs found for this document.");
+        }
+      } catch (err) {
+        console.error("Failed to fetch tabs:", err);
+      }
+    };
+
+    fetchTabs();
+
+    return () => {
+      isMounted = false; // Clean up to avoid setting state on unmounted component
+    };
+  }, [urlId]); 
+
   const handleOpenDoc = (doc) => {
     const docId = doc.id || doc.file_id;
     if (!docId) return;
@@ -107,7 +141,6 @@ export default function App() {
     navigate(`/editor/${docId}`);
   };
 
-  // Rename document logic
   const handleRenameDoc = async (newName) => {
     if (!activeDoc || !newName.trim()) return;
 
@@ -116,7 +149,6 @@ export default function App() {
     const token = localStorage.getItem("token");
 
     try {
-      // Sync to Backend 
       const res = await fetch(`http://127.0.0.1:8000/api/files/${docId}/rename`, {
         method: "PATCH",
         headers: {
@@ -128,7 +160,6 @@ export default function App() {
 
       if (!res.ok) throw new Error("Failed to update title");
 
-      // Update local list 
       setDocuments((prevDocs) =>
         prevDocs.map((doc) =>
           String(doc.id || doc.file_id) === String(docId)
@@ -137,7 +168,6 @@ export default function App() {
         )
       );
 
-      // Update active document 
       setActiveDoc((prev) => (prev ? { ...prev, name: newName } : prev));
       setSaveStatus("saved");
     } catch (err) {
@@ -146,7 +176,6 @@ export default function App() {
     }
   };
 
-  // Landing redirect
   const Landing = () => {
     if (!currentUser) return <Navigate to="/login" replace />;
     return <Navigate to="/dashboard" replace />;
@@ -156,7 +185,6 @@ export default function App() {
     return <div style={{ padding: 40, fontFamily: "sans-serif" }}>Initializing...</div>;
   }
 
-  // Determine current document based on URL or State
   const currentDoc = getDocById(urlId) || activeDoc;
 
   return (
@@ -167,7 +195,6 @@ export default function App() {
         <Route path="/signup" element={<Signup />} />
         <Route path="/oauth-success" element={<OAuthSuccess />} />
 
-        {/* DASHBOARD */}
         <Route
           path="/dashboard"
           element={
@@ -185,26 +212,39 @@ export default function App() {
           }
         />
 
-        {/* EDITOR */}
         <Route
           path="/editor/:id"
           element={
             <ProtectedRoute>
-              {/* check for currentProfile and EITHER a doc or a URL ID  */}
-              {currentProfile && (currentDoc || urlId) ? (
+              {currentProfile && urlId ? (
                 <>
                   <EditorNavbar
-                    activeDoc={currentDoc || { id: urlId, name: "" }}
+                    activeDoc={currentDoc || { id: urlId, name: "Loading..." }}
                     onRenameDoc={handleRenameDoc}
                     saveStatus={saveStatus}
                   />
                   <Toolbar />
                   <div style={{ display: "flex", flex: 1 }}>
-                    <Sidebar />
+                    <Sidebar 
+                      fileId={urlId} 
+                      tabs={tabs} 
+                      setTabs={setTabs} 
+                      activeTabId={activeTabId} 
+                      setActiveTabId={setActiveTabId} 
+                    />
                     <Editor
+                      key={urlId} 
                       document={currentDoc || { id: urlId }}
                       setSaveStatus={setSaveStatus}
-                      setActiveDoc={setActiveDoc}
+                      activeTabId={activeTabId}
+                      tabs={tabs}
+                      onDocUpdate={(updatedDoc) => {
+                        if (String(updatedDoc.id || updatedDoc.file_id) === String(urlId)) {
+                          setDocuments(prev => prev.map(d => 
+                            String(d.id || d.file_id) === String(urlId) ? { ...d, ...updatedDoc } : d
+                          ));
+                        }
+                      }}
                     />
                   </div>
                 </>
