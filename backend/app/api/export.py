@@ -188,18 +188,6 @@ async def export_file(
         headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
 
-def _convert_pages(pages: list[str], format: str) -> tuple[bytes, str, str]:
-    if format == "md":
-        return idoc_to_markdown(pages).encode("utf-8"), "text/markdown", "md"
-    elif format == "docx":
-        return (
-            idoc_to_docx(pages),
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "docx",
-        )
-    else:  # pdf
-        return idoc_to_pdf(pages), "application/pdf", "pdf"
-
 def _write_folder_to_zip(
     db: Session,
     zip_file: zipfile.ZipFile,
