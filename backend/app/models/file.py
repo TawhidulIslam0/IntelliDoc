@@ -28,3 +28,4 @@ class File(Base):
     owner: Mapped["User"] = relationship(back_populates="files")
     folder: Mapped[Optional["Folder"]] = relationship(back_populates="files")
     profile: Mapped["Profile"] = relationship(back_populates="files")
+    tabs: Mapped[list["Tab"]] = relationship(back_populates="file", cascade="all, delete-orphan")
