@@ -1,4 +1,5 @@
 import uuid
+import json  # Added for proper JSON handling
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -20,7 +21,6 @@ async def get_tabs(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)]
 ):
-    """Fetch all tabs for a document in chronological order."""
     file = db.scalar(select(File).where(File.id == file_id, File.owner_id == current_user.id))
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
@@ -39,22 +39,21 @@ async def create_tab(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)]
 ):
-    """Add a new standard tab with auto-incrementing name."""
     file = db.scalar(select(File).where(File.id == file_id, File.owner_id == current_user.id))
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
-    #  Count existing tabs to name the new one 
     existing_count = db.scalar(select(func.count(Tab.id)).where(Tab.file_id == file_id))
     name = f"Tab {existing_count + 1}"
 
     now = datetime.now(timezone.utc).isoformat()
     
+    # Initialize with valid JSON structure instead of empty string
     new_tab = Tab(
         id=uuid.uuid4(),
         file_id=file_id,
         name=name,
-        content="",
+        content='{"pages": [""]}', 
         created_at=now,
         updated_at=now
     )
@@ -71,7 +70,6 @@ async def duplicate_tab(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)]
 ):
- 
     source_tab = db.scalar(
         select(Tab).join(File).where(Tab.id == tab_id, File.owner_id == current_user.id)
     )
@@ -80,11 +78,13 @@ async def duplicate_tab(
         raise HTTPException(status_code=404, detail="Tab not found")
 
     now = datetime.now(timezone.utc).isoformat()
+    
+    #  Ensure content is strictly copied as a string
     new_tab = Tab(
         id=uuid.uuid4(),
         file_id=file_id,
         name=f"{source_tab.name} (Copy)",
-        content=source_tab.content, 
+        content=str(source_tab.content), 
         created_at=now,
         updated_at=now
     )
@@ -102,14 +102,17 @@ async def update_tab(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)]
 ):
-    """Updates tab data (Name, Content, etc.)."""
     tab = db.scalar(select(Tab).join(File).where(Tab.id == tab_id, File.owner_id == current_user.id))
     if not tab:
         raise HTTPException(status_code=404, detail="Tab not found")
 
     for key, value in update_data.items():
         if hasattr(tab, key) and key != "parent_id":
-            setattr(tab, key, value)
+            #  If the data is a dictionary (from JS), convert to string before saving
+            if key == "content" and isinstance(value, (dict, list)):
+                setattr(tab, key, json.dumps(value))
+            else:
+                setattr(tab, key, value)
 
     tab.updated_at = datetime.now(timezone.utc).isoformat()
     db.commit()
@@ -123,12 +126,10 @@ async def delete_tab(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)]
 ):
-    """Delete a single tab."""
     tab = db.scalar(select(Tab).join(File).where(Tab.id == tab_id, File.owner_id == current_user.id))
     if not tab:
         raise HTTPException(status_code=404, detail="Tab not found")
 
-    # Prevent the user from deleting the only tab left in the file
     tab_count = db.scalar(select(func.count(Tab.id)).where(Tab.file_id == tab.file_id))
     if tab_count <= 1:
         raise HTTPException(status_code=400, detail="Cannot delete the last tab.")
