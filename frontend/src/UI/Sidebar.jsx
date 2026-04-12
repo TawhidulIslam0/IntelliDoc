@@ -31,29 +31,35 @@ export default function Sidebar({ fileId, tabs, setTabs, activeTabId, setActiveT
 
   const handleDuplicateTab = async (tabId) => {
     try {
+      setMenuOpenId(null);
 
       if (currentContent && activeTabId === tabId) {
         const token = localStorage.getItem("token");
-        await fetch(`http://localhost:8000/api/files/tabs/${tabId}`, {
+        await fetch(`http://localhost:8000/api/tabs/${tabId}`, {
           method: "PATCH",
           headers: { 
             "Content-Type": "application/json", 
             Authorization: `Bearer ${token}` 
           },
-          body: JSON.stringify({ content: currentContent }), // content is { pages: [...] }
+          body: JSON.stringify({ content: currentContent }),
         });
       }
 
-
       const duplicated = await fileService.duplicateTab(fileId, tabId);
-      
 
-      setTabs((prev) => [...prev, duplicated]);
+      setTabs((prevTabs) => {
+        const updatedTabs = prevTabs.map((t) => {
+          if (t.id === tabId && activeTabId === tabId) {
+            return { ...t, content: currentContent };
+          }
+          return t;
+        });
+        return [...updatedTabs, duplicated];
+      });
+
       setActiveTabId(duplicated.id);
-      setMenuOpenId(null);
     } catch (error) {
       console.error("Duplication failed:", error);
-      alert("Failed to duplicate tab.");
     }
   };
 
@@ -73,11 +79,16 @@ export default function Sidebar({ fileId, tabs, setTabs, activeTabId, setActiveT
   };
 
   const handleDeleteTab = async (id) => {
+    if (tabs.length <= 1) {
+      alert("You must have at least one tab.");
+      return;
+    }
+
     try {
       await fileService.deleteTab(id);
       const remaining = tabs.filter((t) => t.id !== id);
       setTabs(remaining);
-      
+
       if (activeTabId === id && remaining.length > 0) {
         setActiveTabId(remaining[0].id);
       }
@@ -87,13 +98,18 @@ export default function Sidebar({ fileId, tabs, setTabs, activeTabId, setActiveT
     }
   };
 
+  const handleTabClick = (id) => {
+    if (id === activeTabId) return;
+    setActiveTabId(id);
+  };
+
   const renderTabItem = (tab, isFirst = false) => {
     const isActive = tab.id === activeTabId;
-    
+
     return (
       <div key={tab.id} style={styles.tabWrapper}>
         <div
-          onClick={() => setActiveTabId(tab.id)}
+          onClick={() => handleTabClick(tab.id)}
           style={{
             ...styles.tabItem,
             backgroundColor: isActive ? "#E8F0FE" : "transparent",
@@ -101,14 +117,16 @@ export default function Sidebar({ fileId, tabs, setTabs, activeTabId, setActiveT
           }}
         >
           {isActive && <div style={styles.activeIndicator} />}
-          
+
           <div style={styles.tabLabelGroup}>
             <FileText size={18} style={{ marginRight: "12px", opacity: 0.8 }} />
-            <span style={{ 
-                ...styles.tabName, 
+            <span
+              style={{
+                ...styles.tabName,
                 fontWeight: isActive ? "500" : "400",
-            }}>
-              {tab.name}
+              }}
+            >
+              {tab.name || `Tab ${tab.id}`}
             </span>
           </div>
 
@@ -125,17 +143,20 @@ export default function Sidebar({ fileId, tabs, setTabs, activeTabId, setActiveT
 
             {menuOpenId === tab.id && (
               <div style={styles.dropdown} ref={menuRef}>
-                <div style={styles.menuItem} onClick={() => handleDuplicateTab(tab.id)}>
+                <div style={styles.menuItem} onClick={(e) => { e.stopPropagation(); handleDuplicateTab(tab.id); }}>
                   <Copy size={14} /> Duplicate
                 </div>
-                <div style={styles.menuItem} onClick={() => handleRenameTab(tab.id, tab.name)}>
+                <div style={styles.menuItem} onClick={(e) => { e.stopPropagation(); handleRenameTab(tab.id, tab.name); }}>
                   <Type size={14} /> Rename
                 </div>
-                
+
                 {!isFirst && (
                   <>
                     <div style={styles.divider} />
-                    <div style={{ ...styles.menuItem, color: "#D93025" }} onClick={() => handleDeleteTab(tab.id)}>
+                    <div
+                      style={{ ...styles.menuItem, color: "#D93025" }}
+                      onClick={(e) => { e.stopPropagation(); handleDeleteTab(tab.id); }}
+                    >
                       <Trash2 size={14} /> Delete
                     </div>
                   </>
@@ -165,9 +186,9 @@ export default function Sidebar({ fileId, tabs, setTabs, activeTabId, setActiveT
         <div style={styles.outlineHeader} onClick={() => setShowOutline(!showOutline)}>
           <List size={16} />
           <span style={{ flex: 1 }}>Outline</span>
-          <ChevronRight 
-            size={14} 
-            style={{ transform: showOutline ? "rotate(90deg)" : "rotate(0deg)", transition: "0.2s" }} 
+          <ChevronRight
+            size={14}
+            style={{ transform: showOutline ? "rotate(90deg)" : "rotate(0deg)", transition: "0.2s" }}
           />
         </div>
         {showOutline && (
@@ -212,7 +233,6 @@ const styles = {
     display: "flex",
     alignItems: "center",
     transition: "background-color 0.2s",
-    ":hover": { backgroundColor: "#f1f3f4" }
   },
   tabList: { flex: 1, overflowY: "auto" },
   tabWrapper: { paddingRight: "8px" },
@@ -233,7 +253,7 @@ const styles = {
     height: "24px",
     width: "4px",
     backgroundColor: "#1967D2",
-    borderRadius: "0 2px 2px 0"
+    borderRadius: "0 2px 2px 0",
   },
   tabName: { fontSize: "14px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   menuButton: { background: "none", border: "none", cursor: "pointer", display: "flex", padding: "6px" },
