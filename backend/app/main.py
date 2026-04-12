@@ -6,13 +6,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from app.database import Base, engine
-from app.models import user, folder, file, profile
+from app.models import user, folder, file, profile, tab
 from app.api.users import router as users_router
 from app.api.files import router as files_router
 from app.api.folders import router as folders_router
 from app.api.profile import router as profile_router
 from app.api.google_auth import router as google_router
 from app.api.export import router as export_router
+from app.api.tabs import router as tabs_router
 
 app = FastAPI()
 
@@ -21,6 +22,7 @@ app.include_router(files_router, prefix="/api")
 app.include_router(folders_router, prefix="/api")
 app.include_router(export_router, prefix="/api")
 app.include_router(profile_router, prefix="/api")
+app.include_router(tabs_router, prefix="/api")
 app.include_router(google_router) 
 
 app.add_middleware(
