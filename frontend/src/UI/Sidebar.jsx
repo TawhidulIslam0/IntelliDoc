@@ -1,180 +1,265 @@
-import React, { useState } from "react";
-import { MoreVertical } from "lucide-react";
+/* eslint-disable no-unused-vars */
+import React, { useState, useEffect, useRef } from "react";
+import { MoreVertical, Plus, Copy, Type, Trash2, List, ChevronRight, FileText } from "lucide-react";
+import * as fileService from "../api/fileService";
 
-export default function Sidebar() {
-  const [tabs, setTabs] = useState([{ id: 1, title: "Tab 1", subtabs: [] }]);
-  const [activeTab, setActiveTab] = useState(1);
+export default function Sidebar({ fileId, tabs, setTabs, activeTabId, setActiveTabId, currentContent }) {
   const [showOutline, setShowOutline] = useState(true);
   const [menuOpenId, setMenuOpenId] = useState(null);
+  const menuRef = useRef(null);
 
-  const addTab = () => {
-    const newId = Date.now();
-    const newTitle = `Tab ${tabs.length + 1}`;
-    setTabs([...tabs, { id: newId, title: newTitle, subtabs: [] }]);
-    setActiveTab(newId);
-  };
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setMenuOpenId(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
-  const renameTab = (id) => {
-    const tab = tabs.find((t) => t.id === id);
-    const newTitle = prompt("Rename document:", tab.title);
-    if (!newTitle) return;
-    setTabs(tabs.map((t) => (t.id === id ? { ...t, title: newTitle } : t)));
-  };
-
-  const duplicateTab = (id) => {
-    const tab = tabs.find((t) => t.id === id);
-    const newId = Date.now();
-    setTabs([...tabs, { id: newId, title: `${tab.title} Copy`, subtabs: [...tab.subtabs] }]);
-  };
-
-  const addSubtab = (id) => {
-    const tab = tabs.find((t) => t.id === id);
-    const subtabName = prompt("Subtab name:");
-    if (!subtabName) return;
-    tab.subtabs.push(subtabName);
-    setTabs([...tabs]);
-  };
-
-  const deleteTab = (id) => {
-    setTabs(tabs.filter((t) => t.id !== id));
-    if (activeTab === id && tabs.length > 1) setActiveTab(tabs[0].id);
-  };
-
-  const moveTab = (id, direction) => {
-    const index = tabs.findIndex((t) => t.id === id);
-    if (direction === "up" && index > 0) {
-      const newTabs = [...tabs];
-      [newTabs[index - 1], newTabs[index]] = [newTabs[index], newTabs[index - 1]];
-      setTabs(newTabs);
-    } else if (direction === "down" && index < tabs.length - 1) {
-      const newTabs = [...tabs];
-      [newTabs[index], newTabs[index + 1]] = [newTabs[index + 1], newTabs[index]];
-      setTabs(newTabs);
+  const handleAddTab = async () => {
+    try {
+      const newTab = await fileService.createTab(fileId);
+      setTabs([...tabs, newTab]);
+      setActiveTabId(newTab.id);
+      setMenuOpenId(null);
+    } catch (error) {
+      console.error("Creation failed:", error);
     }
   };
 
-  const moveInto = (id) => {
-    const tab = tabs.find((t) => t.id === id);
-    const parentId = parseInt(prompt("Enter parent tab number to move into (e.g., 1):"));
-    const parentTab = tabs.find((t) => t.id === parentId);
-    if (!parentTab || tab.id === parentTab.id) return;
-    parentTab.subtabs.push(tab.title);
-    setTabs(tabs.filter((t) => t.id !== id));
+  const handleDuplicateTab = async (tabId) => {
+    try {
+
+      if (currentContent && activeTabId === tabId) {
+        const token = localStorage.getItem("token");
+        await fetch(`http://localhost:8000/api/files/tabs/${tabId}`, {
+          method: "PATCH",
+          headers: { 
+            "Content-Type": "application/json", 
+            Authorization: `Bearer ${token}` 
+          },
+          body: JSON.stringify({ content: currentContent }), // content is { pages: [...] }
+        });
+      }
+
+
+      const duplicated = await fileService.duplicateTab(fileId, tabId);
+      
+
+      setTabs((prev) => [...prev, duplicated]);
+      setActiveTabId(duplicated.id);
+      setMenuOpenId(null);
+    } catch (error) {
+      console.error("Duplication failed:", error);
+      alert("Failed to duplicate tab.");
+    }
+  };
+
+  const handleRenameTab = async (id, currentTitle) => {
+    const newTitle = prompt("Enter new name:", currentTitle);
+    if (!newTitle || newTitle === currentTitle) return;
+
+    try {
+      const updatedTab = await fileService.updateTab(id, { name: newTitle });
+      setTabs((prevTabs) =>
+        prevTabs.map((t) => (t.id === id ? { ...t, name: updatedTab.name } : t))
+      );
+      setMenuOpenId(null);
+    } catch (error) {
+      alert("Failed to rename.");
+    }
+  };
+
+  const handleDeleteTab = async (id) => {
+    try {
+      await fileService.deleteTab(id);
+      const remaining = tabs.filter((t) => t.id !== id);
+      setTabs(remaining);
+      
+      if (activeTabId === id && remaining.length > 0) {
+        setActiveTabId(remaining[0].id);
+      }
+      setMenuOpenId(null);
+    } catch (error) {
+      alert(error.message);
+    }
+  };
+
+  const renderTabItem = (tab, isFirst = false) => {
+    const isActive = tab.id === activeTabId;
+    
+    return (
+      <div key={tab.id} style={styles.tabWrapper}>
+        <div
+          onClick={() => setActiveTabId(tab.id)}
+          style={{
+            ...styles.tabItem,
+            backgroundColor: isActive ? "#E8F0FE" : "transparent",
+            color: isActive ? "#1967D2" : "#3C4043",
+          }}
+        >
+          {isActive && <div style={styles.activeIndicator} />}
+          
+          <div style={styles.tabLabelGroup}>
+            <FileText size={18} style={{ marginRight: "12px", opacity: 0.8 }} />
+            <span style={{ 
+                ...styles.tabName, 
+                fontWeight: isActive ? "500" : "400",
+            }}>
+              {tab.name}
+            </span>
+          </div>
+
+          <div style={{ position: "relative" }}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuOpenId(menuOpenId === tab.id ? null : tab.id);
+              }}
+              style={styles.menuButton}
+            >
+              <MoreVertical size={16} />
+            </button>
+
+            {menuOpenId === tab.id && (
+              <div style={styles.dropdown} ref={menuRef}>
+                <div style={styles.menuItem} onClick={() => handleDuplicateTab(tab.id)}>
+                  <Copy size={14} /> Duplicate
+                </div>
+                <div style={styles.menuItem} onClick={() => handleRenameTab(tab.id, tab.name)}>
+                  <Type size={14} /> Rename
+                </div>
+                
+                {!isFirst && (
+                  <>
+                    <div style={styles.divider} />
+                    <div style={{ ...styles.menuItem, color: "#D93025" }} onClick={() => handleDeleteTab(tab.id)}>
+                      <Trash2 size={14} /> Delete
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
   };
 
   return (
-    <aside
-      className="sidebar" /* Added this to match Print.css */
-      style={{
-        width: "240px",
-        backgroundColor: "#f8f9fa",
-        borderRight: "1px solid #E5E7EB",
-        display: "flex",
-        flexDirection: "column",
-        overflowY: "auto",
-        padding: "12px",
-      }}
-    >
-      {tabs.map((tab) => (
-        <div key={tab.id} style={{ marginBottom: "8px" }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              backgroundColor: tab.id === activeTab ? "#E0E7FF" : "white",
-              borderRadius: "6px",
-              padding: "6px 8px",
-              cursor: "pointer",
-              border: "1px solid #D1D5DB",
-              fontWeight: tab.id === activeTab ? 500 : 400,
-            }}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            <span>{tab.title}</span>
+    <aside style={styles.sidebar}>
+      <div style={styles.headerRow}>
+        <p style={styles.sectionHeader}>Document tabs</p>
+        <button onClick={handleAddTab} style={styles.iconAddBtn}>
+          <Plus size={18} />
+        </button>
+      </div>
 
-            <div style={{ position: "relative" }}>
-              <button
-                onMouseDown={(e) => e.preventDefault()} /* Keeps focus on doc */
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setMenuOpenId(menuOpenId === tab.id ? null : tab.id);
-                }}
-                style={{ background: "transparent", border: "none", cursor: "pointer", color: "#6B7280" }}
-              >
-                <MoreVertical size={16} />
-              </button>
+      <div className="custom-scrollbar" style={styles.tabList}>
+        {tabs.map((tab, index) => renderTabItem(tab, index === 0))}
+      </div>
 
-              {menuOpenId === tab.id && (
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "24px",
-                    right: 0,
-                    backgroundColor: "white",
-                    border: "1px solid #D1D5DB",
-                    borderRadius: "6px",
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-                    zIndex: 10,
-                    minWidth: "160px",
-                  }}
-                >
-                  {tab.id === 1 ? (
-                    <>
-                      <div style={{ padding: "6px 12px", cursor: "pointer", borderBottom: "1px solid #E5E7EB" }} onClick={() => addSubtab(tab.id)}>Add Subtab</div>
-                      <div style={{ padding: "6px 12px", cursor: "pointer", borderBottom: "1px solid #E5E7EB" }} onClick={() => duplicateTab(tab.id)}>Duplicate</div>
-                      <div style={{ padding: "6px 12px", cursor: "pointer", borderBottom: "1px solid #E5E7EB" }} onClick={() => renameTab(tab.id)}>Rename</div>
-                      <div style={{ padding: "6px 12px", cursor: "pointer" }} onClick={() => setShowOutline(!showOutline)}>
-                        {showOutline ? "Hide Outline" : "Show Outline"}
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div style={{ padding: "6px 12px", cursor: "pointer", borderBottom: "1px solid #E5E7EB" }} onClick={() => addSubtab(tab.id)}>Add Subtab</div>
-                      <div style={{ padding: "6px 12px", cursor: "pointer", borderBottom: "1px solid #E5E7EB" }} onClick={() => duplicateTab(tab.id)}>Duplicate</div>
-                      <div style={{ padding: "6px 12px", cursor: "pointer", borderBottom: "1px solid #E5E7EB" }} onClick={() => renameTab(tab.id)}>Rename</div>
-                      <div style={{ padding: "6px 12px", cursor: "pointer", borderBottom: "1px solid #E5E7EB" }} onClick={() => deleteTab(tab.id)}>Delete</div>
-                      <div style={{ padding: "6px 12px", cursor: "pointer", borderBottom: "1px solid #E5E7EB" }} onClick={() => moveTab(tab.id, "up")}>Move Up</div>
-                      <div style={{ padding: "6px 12px", cursor: "pointer", borderBottom: "1px solid #E5E7EB" }} onClick={() => moveTab(tab.id, "down")}>Move Down</div>
-                      <div style={{ padding: "6px 12px", cursor: "pointer" }} onClick={() => moveInto(tab.id)}>Move Into</div>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
+      <div style={styles.outlineSection}>
+        <div style={styles.outlineHeader} onClick={() => setShowOutline(!showOutline)}>
+          <List size={16} />
+          <span style={{ flex: 1 }}>Outline</span>
+          <ChevronRight 
+            size={14} 
+            style={{ transform: showOutline ? "rotate(90deg)" : "rotate(0deg)", transition: "0.2s" }} 
+          />
+        </div>
+        {showOutline && (
+          <div style={styles.outlineContent}>
+            Headings you add to the document will appear here.
           </div>
+        )}
+      </div>
 
-          {/* Subtabs */}
-          {tab.subtabs.map((sub, idx) => (
-            <div key={idx} style={{ padding: "4px 16px", fontSize: "13px", color: "#4B5563", cursor: "pointer" }}>
-              {sub}
-            </div>
-          ))}
-        </div>
-      ))}
-
-      <button
-        onMouseDown={(e) => e.preventDefault()} /* Keeps focus on doc */
-        onClick={addTab}
-        style={{
-          marginTop: "8px",
-          padding: "6px 12px",
-          borderRadius: "6px",
-          backgroundColor: "white",
-          border: "1px dashed #9CA3AF",
-          cursor: "pointer",
-          fontWeight: 500,
-          color: "#6B7280",
-        }}
-      >
-        + New Tab
-      </button>
-
-      {showOutline && (
-        <div style={{ marginTop: "24px", fontSize: "14px", color: "#6B7280" }}>
-          Headings you add to the document will appear here.
-        </div>
-      )}
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar { display: none; }
+        .custom-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      `}</style>
     </aside>
   );
 }
+
+const styles = {
+  sidebar: {
+    width: "260px",
+    backgroundColor: "#fff",
+    borderRight: "1px solid #e0e0e0",
+    display: "flex",
+    flexDirection: "column",
+    padding: "16px 0px",
+    height: "100%",
+  },
+  headerRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "0 16px 12px 16px",
+  },
+  sectionHeader: { fontSize: "14px", color: "#3C4043", margin: 0 },
+  iconAddBtn: {
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    color: "#5F6368",
+    padding: "4px",
+    borderRadius: "50%",
+    display: "flex",
+    alignItems: "center",
+    transition: "background-color 0.2s",
+    ":hover": { backgroundColor: "#f1f3f4" }
+  },
+  tabList: { flex: 1, overflowY: "auto" },
+  tabWrapper: { paddingRight: "8px" },
+  tabItem: {
+    position: "relative",
+    display: "flex",
+    alignItems: "center",
+    padding: "0 12px 0 16px",
+    height: "40px",
+    borderRadius: "0 24px 24px 0",
+    cursor: "pointer",
+    margin: "2px 0",
+  },
+  tabLabelGroup: { display: "flex", alignItems: "center", flex: 1, overflow: "hidden" },
+  activeIndicator: {
+    position: "absolute",
+    left: 0,
+    height: "24px",
+    width: "4px",
+    backgroundColor: "#1967D2",
+    borderRadius: "0 2px 2px 0"
+  },
+  tabName: { fontSize: "14px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  menuButton: { background: "none", border: "none", cursor: "pointer", display: "flex", padding: "6px" },
+  dropdown: {
+    position: "absolute",
+    top: "32px",
+    right: "0",
+    backgroundColor: "#fff",
+    border: "1px solid #e0e0e0",
+    borderRadius: "8px",
+    boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
+    zIndex: 1000,
+    width: "160px",
+    padding: "6px 0",
+  },
+  menuItem: {
+    padding: "10px 16px",
+    fontSize: "13px",
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    cursor: "pointer",
+    color: "#3C4043",
+  },
+  divider: { height: "1px", backgroundColor: "#e0e0e0", margin: "4px 0" },
+  outlineSection: { marginTop: "auto", borderTop: "1px solid #e0e0e0", padding: "16px" },
+  outlineHeader: { display: "flex", alignItems: "center", gap: "12px", fontSize: "14px", cursor: "pointer" },
+  outlineContent: { fontSize: "12px", color: "#70757a", marginTop: "16px", fontStyle: "italic" },
+};
