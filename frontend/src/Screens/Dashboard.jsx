@@ -103,7 +103,9 @@ const FileItem = ({ doc, onOpenDoc, onOpenMenu, isRecentDoc, onDragStart }) => {
           }}
         >
           <span style={{ fontSize: 16, fontWeight: 600, color: isHovered ? "#4285f4" : "#202124" }}>
-            {isRecentDoc ? "DOC" : (doc.mime_type === "application/pdf" ? "PDF" : "FILE")}
+            {isRecentDoc ? "DOC" : 
+             doc.mime_type === "application/pdf" ? "PDF" : 
+             doc.mime_type === "text/plain" ? "TXT" : "FILE"}
           </span>
         </div>
 
@@ -293,17 +295,17 @@ const DashBoard = ({ setDocuments }) => {
             const finalName = item.name.endsWith(".idoc") ? `${newName}.idoc` : newName;
             const updatedFile = await renameFile(item.id, finalName);
             
-            //  Update Dashboard's local fetchedDocuments state
+            // Update Dashboard's local fetchedDocuments state
             setFetchedDocuments(prev => prev.map(f => f.id === item.id ? { ...f, name: updatedFile.name } : f));
             
-            //  Update the parent documents state (setDocuments prop) so the Editor matches instantly
+            // Update the parent documents state (setDocuments prop) so the Editor matches instantly
             if (setDocuments) {
               setDocuments(prev => prev.map(doc => 
                 doc.id === item.id ? { ...doc, name: updatedFile.name } : doc
               ));
             }
 
-            //  Update document.title if the renamed file is the one open
+            // Update document.title if the renamed file is the one open
             if (window.location.pathname.includes(item.id)) {
                 document.title = `${newName} - IntelliDoc`;
             }
