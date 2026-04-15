@@ -1,9 +1,11 @@
 @media print {
   @page {
+    /* This defines the physical paper size */
+    size: 8.5in 11in; 
     margin: 0 !important;
-    size: auto;
   }
 
+  /* Hide everything except the editor */
   nav, 
   aside, 
   header, 
@@ -12,28 +14,22 @@
   .sidebar, 
   .no-print,
   .saved-status,
-  .floating-page-indicator,
+  .page-number-label, /* Hide the UI page numbers since printer adds its own or we use footers */
   button {
     display: none !important;
-    visibility: hidden !important;
-    height: 0 !important;
-    margin: 0 !important;
-    padding: 0 !important;
   }
 
   html, body {
+    width: 8.5in !important;
+    height: 11in !important;
+    background-color: white !important;
     margin: 0 !important;
     padding: 0 !important;
-    height: auto !important;
-    background-color: white !important;
-    -webkit-print-color-adjust: exact; 
-    print-color-adjust: exact;
+    overflow: visible !important;
   }
 
   main {
     display: block !important;
-    overflow: visible !important;
-    height: auto !important;
     background: none !important;
     padding: 0 !important;
     margin: 0 !important;
@@ -41,34 +37,28 @@
 
   .editor-page {
     display: block !important;
-    visibility: visible !important;
+    width: 8.5in !important; 
+    height: 11in !important;
     
-
-    margin: 0 !important; 
-    
-    width: 100% !important;
-    height: auto !important;
-    min-height: initial !important;
-
-    box-shadow: none !important;
-    border: none !important;
-    
-    padding: 1in !important; 
-    
-    transform: none !important;
-    zoom: 1 !important;
-  
+ 
     page-break-after: always !important;
     page-break-inside: avoid !important;
+    break-after: page !important;
+
+   
+    margin: 0 !important;
+    padding: 0 !important; 
+    border: none !important;
+    box-shadow: none !important;
+    background: white !important;
   }
 
   [contentEditable] {
+    width: 100% !important;
+    height: 100% !important;
+    padding: 1in !important; 
     color: black !important;
     background: white !important;
-    outline: none !important;
-  }
-
-  .page-number, [class*="footer"], [id*="footer"] {
-    display: none !important;
+    font-size: 11pt !important;
   }
 }
