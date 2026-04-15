@@ -26,7 +26,8 @@ import {
 } from "lucide-react";
 
 // CSS to hide the up/down arrows (spinners) in the font size input
-const hideArrowsCSS = `
+// PLUS: Fixes for the list visibility (bullets and numbers)
+const editorStylesCSS = `
   input::-webkit-outer-spin-button,
   input::-webkit-inner-spin-button {
     -webkit-appearance: none;
@@ -34,6 +35,21 @@ const hideArrowsCSS = `
   }
   input[type=number] {
     -moz-appearance: textfield;
+  }
+
+  /* Fix for list visibility within the contenteditable editor */
+  [contenteditable="true"] ul {
+    list-style-type: disc !important;
+    padding-left: 40px !important;
+    margin: 1em 0;
+  }
+  [contenteditable="true"] ol {
+    list-style-type: decimal !important;
+    padding-left: 40px !important;
+    margin: 1em 0;
+  }
+  [contenteditable="true"] li {
+    display: list-item !important;
   }
 `;
 
@@ -55,7 +71,6 @@ const Toolbar = ({ editorRef, fileId }) => {
     return saved ? Number(saved) : 11;
   });
 
-  // Local state for the input field to prevent jumping while typing
   const [inputValue, setInputValue] = useState(fontSize.toString());
 
   const [fontFamily, setFontFamily] = useState(() => {
@@ -81,7 +96,7 @@ const Toolbar = ({ editorRef, fileId }) => {
   const highlightColorRef = useRef(null);
   const skipSelectionUpdate = useRef(false);
   const isTypingFontSize = useRef(false); 
-  const isApplyingSize = useRef(false); // NEW: Lock to prevent cursor detection from reverting size
+  const isApplyingSize = useRef(false);
   const savedRangeRef = useRef(null);
 
   const [activeFormats, setActiveFormats] = useState({
@@ -123,7 +138,6 @@ const Toolbar = ({ editorRef, fileId }) => {
 
   useEffect(() => {
     const handleSelectionChange = () => {
-      // IF applying size or typing, don't let the cursor position change the toolbar number
       if (skipSelectionUpdate.current || isTypingFontSize.current || isApplyingSize.current) return;
       
       setActiveFormats({
@@ -136,7 +150,6 @@ const Toolbar = ({ editorRef, fileId }) => {
               document.queryCommandState("insertOrderedList") ? "number" : null
       });
 
-      // SYNC FONT SIZE WITH CURSOR POSITION
       const selection = window.getSelection();
       if (selection && selection.rangeCount > 0) {
         let node = selection.anchorNode;
@@ -205,7 +218,6 @@ const Toolbar = ({ editorRef, fileId }) => {
   const restoreSavedSelection = () => {
     const selection = window.getSelection();
     if (!selection || !savedRangeRef.current) return false;
-
     selection.removeAllRanges();
     selection.addRange(savedRangeRef.current.cloneRange());
     return true;
@@ -213,14 +225,11 @@ const Toolbar = ({ editorRef, fileId }) => {
   
   const applyCommand = (command, value = null) => {
     restoreSavedSelection();
-
     let finalValue = value;
     if (command === "fontName" && value && value.includes(" ")) {
       finalValue = `'${value}'`;
     }
-
     document.execCommand(command, false, finalValue);
-
     const selection = window.getSelection();
     if (selection && selection.rangeCount > 0) {
       savedRangeRef.current = selection.getRangeAt(0).cloneRange();
@@ -229,10 +238,7 @@ const Toolbar = ({ editorRef, fileId }) => {
 
   const updateFontSize = (newSize) => {
     const size = Math.max(1, Math.min(newSize, 96));
-    
-    // LOCK selection updates so the editor doesn't fight back
     isApplyingSize.current = true;
-    
     setFontSize(size);
     setInputValue(size.toString());
 
@@ -243,9 +249,7 @@ const Toolbar = ({ editorRef, fileId }) => {
     }
 
     if (!selection.rangeCount) {
-      setTimeout(() => {
-        isApplyingSize.current = false;
-      }, 500);
+      setTimeout(() => { isApplyingSize.current = false; }, 500);
       return;
     }
 
@@ -256,9 +260,7 @@ const Toolbar = ({ editorRef, fileId }) => {
       span.style.fontSize = `${size}pt`;
       span.style.lineHeight = "1.2";
       span.innerHTML = "&#8203;"; 
-
       range.insertNode(span);
-      
       const newRange = document.createRange();
       newRange.setStart(span.firstChild, 1);
       newRange.setEnd(span.firstChild, 1);
@@ -284,11 +286,7 @@ const Toolbar = ({ editorRef, fileId }) => {
     }
     
     if (fileId) localStorage.setItem(`editor-fontSize-${fileId}`, size);
-
-    // UNLOCK after a delay to allow the user to click and type
-    setTimeout(() => {
-      isApplyingSize.current = false;
-    }, 500);
+    setTimeout(() => { isApplyingSize.current = false; }, 500);
   };
 
   const btnStyle = {
@@ -360,7 +358,8 @@ const Toolbar = ({ editorRef, fileId }) => {
         position: "relative", zIndex: 50
       }}
     >
-      <style>{hideArrowsCSS}</style>
+      {/* This style block injects the necessary CSS for lists and input arrows */}
+      <style>{editorStylesCSS}</style>
 
       <input
         type="text"
