@@ -1,9 +1,10 @@
+/* eslint-disable no-unused-vars */
 import React, { useContext, useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { ProfileContext } from "../UI/ProfileContext";
 import logo from "../assets/file_icon_logo.png";
 import logoutIcon from "../assets/logout.png";
-import { getFiles } from "../api/fileService";
+import { getFiles, getPreviewUrl } from "../api/fileService"; // Added getPreviewUrl
 import { getFolders } from "../api/folderService";
 
 export default function DashboardNavbar({ user }) {
@@ -15,7 +16,7 @@ export default function DashboardNavbar({ user }) {
   } = useContext(ProfileContext);
 
   const [showDropdown, setShowDropdown] = useState(false);
-  const [showSearchDropdown, setShowSearchDropdown] = useState(false); // Controls search results visibility
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false); 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState({ files: [], folders: [] });
   const [isSearching, setIsSearching] = useState(false);
@@ -26,15 +27,24 @@ export default function DashboardNavbar({ user }) {
   // Live Search Logic
   useEffect(() => {
     const delayDebounceFn = setTimeout(async () => {
-      if (searchQuery.trim().length > 0) {
+      const query = searchQuery.trim();
+      if (query.length > 0) {
         setIsSearching(true);
         try {
-          // Fetch both matching files and folders
-          const [files, folders] = await Promise.all([
-            getFiles(currentProfile?.id, null, searchQuery),
-            getFolders(currentProfile?.id, null, searchQuery)
-          ]);
-          setSearchResults({ files, folders });
+          if (query.toLowerCase() === "type:folder") {
+            const folders = await getFolders(currentProfile?.id, null, query);
+            setSearchResults({ files: [], folders: folders });
+          } else {
+            const [files, folders] = await Promise.all([
+              getFiles(currentProfile?.id, null, query),
+              !query.startsWith("type:") ? getFolders(currentProfile?.id, null, query) : Promise.resolve([])
+            ]);
+            
+            setSearchResults({ 
+              files: files.filter(f => f.type !== "folder"), 
+              folders: folders 
+            });
+          }
         } catch (err) {
           console.error("Search fetch error:", err);
         } finally {
@@ -43,12 +53,12 @@ export default function DashboardNavbar({ user }) {
       } else {
         setSearchResults({ files: [], folders: [] });
       }
-    }, 300); // Wait 300ms after typing stops
+    }, 300);
 
     return () => clearTimeout(delayDebounceFn);
   }, [searchQuery, currentProfile]);
 
-  //  Click Outside logic for both dropdowns
+  // Click Outside logic
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -72,13 +82,39 @@ export default function DashboardNavbar({ user }) {
     setShowDropdown(false);
   };
 
-  const handleResultClick = (item, type) => {
+  // FIXED: Navigation now integrates with Dashboard's internal preview system
+  const handleResultClick = async (item, type) => {
+    // Clear the search UI immediately
     setShowSearchDropdown(false);
     setSearchQuery("");
-    if (type === 'file') {
-      navigate(`/editor/${item.id}`);
-    } else {
+    setSearchResults({ files: [], folders: [] });
+    
+    // 1. Handle Folders
+    if (type === 'folder' || item.type === 'folder') {
       navigate(`/dashboard?folderId=${item.id}`);
+      return;
+    }
+
+    // 2. Identify file extension for PDF and TXT
+    const fileName = item.name?.toLowerCase() || "";
+    const isExternalFile = fileName.endsWith(".pdf") || fileName.endsWith(".txt");
+
+    // 3. Navigation Logic
+    if (isExternalFile) {
+      try {
+        // Fetch the preview URL from the backend
+        const { url } = await getPreviewUrl(item.id);
+        
+        // Navigate to dashboard and pass the preview URL in the state
+        // This allows DashBoard.jsx to see the 'preview' state and trigger the inline viewer
+        navigate("/dashboard", { state: { openPreviewUrl: url } });
+      } catch (err) {
+        console.error("Failed to fetch preview for search result:", err);
+        alert("Could not open preview.");
+      }
+    } else {
+      // Default: Go to the editor for .idoc / standard documents
+      navigate(`/editor/${item.id}`);
     }
   };
 
@@ -89,14 +125,12 @@ export default function DashboardNavbar({ user }) {
     return acc;
   }, {});
 
-  const otherProfiles = profiles.filter((p) => p.id !== currentProfile?.id);
-
   return (
     <header style={{
       height: "64px", backgroundColor: "white", display: "flex",
       alignItems: "center", justifyContent: "space-between",
       padding: "0 20px", borderBottom: "1px solid #E5E7EB",
-      position: "relative" // Ensure dropdowns position correctly
+      position: "relative"
     }}>
       {/* LEFT: Logo */}
       <div style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }} onClick={() => navigate("/dashboard")}>
@@ -104,7 +138,7 @@ export default function DashboardNavbar({ user }) {
         <span style={{ fontSize: "20px", fontWeight: "500", color: "#5F6368" }}>IntelliDoc</span>
       </div>
 
-      {/* MIDDLE: Google Docs Search Bar */}
+      {/* MIDDLE: Search Bar */}
       <div style={{ flex: 1, display: "flex", justifyContent: "center", position: "relative" }} ref={searchRef}>
         <div style={{ position: "relative", width: "100%", maxWidth: "700px" }}>
           <input
@@ -125,12 +159,10 @@ export default function DashboardNavbar({ user }) {
               fontSize: "16px"
             }}
           />
-          {/* Magnifying Glass Icon */}
           <span style={{ position: "absolute", left: "15px", top: "50%", transform: "translateY(-50%)", color: "#5F6368" }}>
             🔍
           </span>
 
-          {/* Search Dropdown */}
           {showSearchDropdown && (
             <div style={{
               position: "absolute", top: "100%", left: 0, right: 0,
@@ -139,48 +171,22 @@ export default function DashboardNavbar({ user }) {
               zIndex: 1000, overflow: "hidden", borderTop: "1px solid #E5E7EB"
             }}>
               {searchQuery.length === 0 ? (
-                /* Filter Suggestions */
                 <div style={{ padding: "8px 0" }}>
                   <div style={{ padding: "10px 20px", color: "#5F6368", fontSize: "12px", fontWeight: "bold" }}>SEARCH FILTERS</div>
-                  
-                  <div 
-                    style={filterItemStyle} 
-                    onClick={() => setSearchQuery("type:document")}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F1F3F4"}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
-                  >
+                  <div style={filterItemStyle} onClick={() => setSearchQuery("type:document")}>
                     <span style={{ marginRight: "12px" }}>📄</span> Documents
                   </div>
-
-                  <div 
-                    style={filterItemStyle} 
-                    onClick={() => setSearchQuery("type:folder")}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F1F3F4"}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
-                  >
+                  <div style={filterItemStyle} onClick={() => setSearchQuery("type:folder")}>
                     <span style={{ marginRight: "12px" }}>📁</span> Folders
                   </div>
-
-                  <div 
-                    style={filterItemStyle} 
-                    onClick={() => setSearchQuery("type:pdf")}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F1F3F4"}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
-                  >
+                  <div style={filterItemStyle} onClick={() => setSearchQuery("type:pdf")}>
                     <span style={{ marginRight: "12px" }}>📑</span> PDFs
                   </div>
-
-                  <div 
-                    style={filterItemStyle} 
-                    onClick={() => setSearchQuery("type:txt")}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F1F3F4"}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
-                  >
+                  <div style={filterItemStyle} onClick={() => setSearchQuery("type:txt")}>
                     <span style={{ marginRight: "12px" }}>📝</span> Text Files
                   </div>
                 </div>
               ) : (
-                /* Live Results */
                 <div style={{ maxHeight: "400px", overflowY: "auto" }}>
                   {isSearching ? (
                     <div style={{ padding: "20px", textAlign: "center", color: "#5F6368" }}>Searching...</div>
@@ -193,7 +199,10 @@ export default function DashboardNavbar({ user }) {
                       ))}
                       {searchResults.files.map(file => (
                         <div key={file.id} style={resultItemStyle} onClick={() => handleResultClick(file, 'file')}>
-                          <span style={{ marginRight: "12px" }}>📄</span> {file.name}
+                          <span style={{ marginRight: "12px" }}>
+                            {file.name.toLowerCase().endsWith('.pdf') ? '📑' : 
+                             file.name.toLowerCase().endsWith('.txt') ? '📝' : '📄'}
+                          </span> {file.name}
                         </div>
                       ))}
                       {searchResults.files.length === 0 && searchResults.folders.length === 0 && (
@@ -208,7 +217,7 @@ export default function DashboardNavbar({ user }) {
         </div>
       </div>
 
-      {/* RIGHT: User + Profile */}
+      {/* RIGHT: User and Profile Dropdown */}
       <div style={{ display: "flex", alignItems: "center", gap: "16px" }} ref={dropdownRef}>
         {user && <span style={{ fontWeight: "500", color: "#202124" }}>{user.username}</span>}
         {currentProfile && (
@@ -216,21 +225,21 @@ export default function DashboardNavbar({ user }) {
             <button onClick={() => setShowDropdown(!showDropdown)} style={profileButtonStyle}>
               {currentProfile.name} ▼
             </button>
-            {showDropdown && otherProfiles.length > 0 && (
+            {showDropdown && (
               <div style={profileDropdownStyle}>
                 {Object.keys(groupedProfiles).map((type) => {
-                    const group = groupedProfiles[type].filter(p => p.id !== currentProfile?.id);
-                    if (group.length === 0) return null;
-                    return (
-                        <div key={type}>
-                            <div style={{ padding: "6px 14px", fontSize: "11px", fontWeight: "600", color: "#5F6368", textTransform: "uppercase" }}>{type}</div>
-                            {group.map(p => (
-                                <div key={p.id} onClick={() => handleSwitchProfile(p)} style={dropdownItemStyle}>
-                                    {p.name}
-                                </div>
-                            ))}
+                  const group = groupedProfiles[type].filter(p => p.id !== currentProfile?.id);
+                  if (group.length === 0) return null;
+                  return (
+                    <div key={type}>
+                      <div style={{ padding: "6px 14px", fontSize: "11px", fontWeight: "600", color: "#5F6368", textTransform: "uppercase" }}>{type}</div>
+                      {group.map(p => (
+                        <div key={p.id} onClick={() => handleSwitchProfile(p)} style={dropdownItemStyle}>
+                          {p.name}
                         </div>
-                    );
+                      ))}
+                    </div>
+                  );
                 })}
               </div>
             )}
@@ -242,7 +251,6 @@ export default function DashboardNavbar({ user }) {
   );
 }
 
-// Styling Helper Constants
 const filterItemStyle = {
   padding: "10px 24px", cursor: "pointer", display: "flex", alignItems: "center", color: "#3C4043", fontSize: "14px",
   transition: "background 0.1s", backgroundColor: "transparent"
