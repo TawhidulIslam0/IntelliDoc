@@ -358,6 +358,26 @@ async def list_files(
             raise HTTPException(status_code=404, detail="Default profile not found")
         profile_id = profile.id
 
+    # Handle folder specific search first
+    if search and search.lower().strip() == "type:folder":
+        folders = db.scalars(
+            select(Folder).where(
+                Folder.owner_id == current_user.id,
+                Folder.profile_id == profile_id
+            )
+        ).all()
+        return [
+            {
+                "id": str(f.id),
+                "name": f.name,
+                "type": "folder",
+                # Safe access to attributes that might be missing in Folder model
+                "created_at": getattr(f, "created_at", None),
+                "updated_at": getattr(f, "updated_at", None)
+            }
+            for f in folders
+        ]
+
     # Base query: must belong to the user and the selected profile
     stmt = select(File).where(
         File.owner_id == current_user.id,
@@ -368,7 +388,7 @@ async def list_files(
     if search:
         search_query = search.lower().strip()
         
-        # Handle "type:" filters for specific extensions
+        # Handle type filters for specific extensions
         if search_query.startswith("type:"):
             file_type = search_query.replace("type:", "")
             if file_type == "document":
@@ -378,8 +398,6 @@ async def list_files(
                 stmt = stmt.where(File.name.ilike("%.pdf"))
             elif file_type == "txt":
                 stmt = stmt.where(File.name.ilike("%.txt"))
-            elif file_type == "folder":
-                return [] 
         else:
             # Global Name Search: Find matches anywhere in the profile
             stmt = stmt.where(File.name.ilike(f"%{search_query}%"))
@@ -401,7 +419,8 @@ async def list_files(
             "folder_id": str(file.folder_id) if file.folder_id else None,
             "created_at": file.created_at,
             "updated_at": file.updated_at,
-            "status": file.status
+            "status": file.status,
+            "type": "file"
         }
         for file in files
     ]
@@ -572,6 +591,7 @@ async def get_file_content(
     tabs = db.scalars(select(Tab).where(Tab.file_id == file_id).order_by(Tab.created_at.asc())).all()
 
     try:
+        # Check if file exists in S3 before trying to read it
         response = s3.get_object(Bucket=BUCKET_NAME, Key=file.s3_key)
         content_bytes = response["Body"].read().decode("utf-8")
         content_json = json.loads(content_bytes)
@@ -727,7 +747,7 @@ async def move_file(
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
-    # Verify target folder belongs to the same user/profile
+    # Verify target folder belongs to the same user or profile
     if payload.folder_id is not None:
         folder = db.scalar(
             select(Folder).where(
@@ -740,7 +760,7 @@ async def move_file(
         if not folder:
             raise HTTPException(status_code=404, detail="Target folder not found")
 
-    # No-op if already in target folder
+    # No op if already in target folder
     if file.folder_id == payload.folder_id:
         return {
             "message": "File already in target folder",
