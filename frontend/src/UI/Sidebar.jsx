@@ -17,11 +17,18 @@ export default function Sidebar({ fileId, tabs, setTabs, activeTabId, setActiveT
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+  const syncLocalTabs = () => {
+    if (!currentContent || !activeTabId) return;
+    setTabs(prev => prev.map(t => 
+      String(t.id) === String(activeTabId) ? { ...t, content: currentContent } : t
+    ));
+  };
 
   const handleAddTab = async () => {
     try {
+      syncLocalTabs(); // Ensure current UI state is reflected locally before adding
       const newTab = await fileService.createTab(fileId);
-      setTabs([...tabs, newTab]);
+      setTabs(prev => [...prev, newTab]);
       setActiveTabId(newTab.id);
       setMenuOpenId(null);
     } catch (error) {
@@ -32,31 +39,13 @@ export default function Sidebar({ fileId, tabs, setTabs, activeTabId, setActiveT
   const handleDuplicateTab = async (tabId) => {
     try {
       setMenuOpenId(null);
-
-      if (currentContent && activeTabId === tabId) {
-        const token = localStorage.getItem("token");
-        await fetch(`http://localhost:8000/api/tabs/${tabId}`, {
-          method: "PATCH",
-          headers: { 
-            "Content-Type": "application/json", 
-            Authorization: `Bearer ${token}` 
-          },
-          body: JSON.stringify({ content: currentContent }),
-        });
+      // If duplicating the active tab, ensure our local list has the latest content first
+      if (String(activeTabId) === String(tabId)) {
+        syncLocalTabs();
       }
 
       const duplicated = await fileService.duplicateTab(fileId, tabId);
-
-      setTabs((prevTabs) => {
-        const updatedTabs = prevTabs.map((t) => {
-          if (t.id === tabId && activeTabId === tabId) {
-            return { ...t, content: currentContent };
-          }
-          return t;
-        });
-        return [...updatedTabs, duplicated];
-      });
-
+      setTabs(prev => [...prev, duplicated]);
       setActiveTabId(duplicated.id);
     } catch (error) {
       console.error("Duplication failed:", error);
@@ -98,18 +87,17 @@ export default function Sidebar({ fileId, tabs, setTabs, activeTabId, setActiveT
     }
   };
 
-  const handleTabClick = (id) => {
-    if (id === activeTabId) return;
-    setActiveTabId(id);
-  };
-
   const renderTabItem = (tab, isFirst = false) => {
     const isActive = tab.id === activeTabId;
-
     return (
       <div key={tab.id} style={styles.tabWrapper}>
         <div
-          onClick={() => handleTabClick(tab.id)}
+          onClick={() => {
+            if (!isActive) {
+              syncLocalTabs(); // Sync UI state before moving away
+              setActiveTabId(tab.id);
+            }
+          }}
           style={{
             ...styles.tabItem,
             backgroundColor: isActive ? "#E8F0FE" : "transparent",
@@ -117,19 +105,12 @@ export default function Sidebar({ fileId, tabs, setTabs, activeTabId, setActiveT
           }}
         >
           {isActive && <div style={styles.activeIndicator} />}
-
           <div style={styles.tabLabelGroup}>
             <FileText size={18} style={{ marginRight: "12px", opacity: 0.8 }} />
-            <span
-              style={{
-                ...styles.tabName,
-                fontWeight: isActive ? "500" : "400",
-              }}
-            >
+            <span style={{ ...styles.tabName, fontWeight: isActive ? "500" : "400" }}>
               {tab.name || `Tab ${tab.id}`}
             </span>
           </div>
-
           <div style={{ position: "relative" }}>
             <button
               onClick={(e) => {
@@ -140,7 +121,6 @@ export default function Sidebar({ fileId, tabs, setTabs, activeTabId, setActiveT
             >
               <MoreVertical size={16} />
             </button>
-
             {menuOpenId === tab.id && (
               <div style={styles.dropdown} ref={menuRef}>
                 <div style={styles.menuItem} onClick={(e) => { e.stopPropagation(); handleDuplicateTab(tab.id); }}>
@@ -149,14 +129,10 @@ export default function Sidebar({ fileId, tabs, setTabs, activeTabId, setActiveT
                 <div style={styles.menuItem} onClick={(e) => { e.stopPropagation(); handleRenameTab(tab.id, tab.name); }}>
                   <Type size={14} /> Rename
                 </div>
-
                 {!isFirst && (
                   <>
                     <div style={styles.divider} />
-                    <div
-                      style={{ ...styles.menuItem, color: "#D93025" }}
-                      onClick={(e) => { e.stopPropagation(); handleDeleteTab(tab.id); }}
-                    >
+                    <div style={{ ...styles.menuItem, color: "#D93025" }} onClick={(e) => { e.stopPropagation(); handleDeleteTab(tab.id); }}>
                       <Trash2 size={14} /> Delete
                     </div>
                   </>
@@ -177,27 +153,17 @@ export default function Sidebar({ fileId, tabs, setTabs, activeTabId, setActiveT
           <Plus size={18} />
         </button>
       </div>
-
       <div className="custom-scrollbar" style={styles.tabList}>
         {tabs.map((tab, index) => renderTabItem(tab, index === 0))}
       </div>
-
       <div style={styles.outlineSection}>
         <div style={styles.outlineHeader} onClick={() => setShowOutline(!showOutline)}>
           <List size={16} />
           <span style={{ flex: 1 }}>Outline</span>
-          <ChevronRight
-            size={14}
-            style={{ transform: showOutline ? "rotate(90deg)" : "rotate(0deg)", transition: "0.2s" }}
-          />
+          <ChevronRight size={14} style={{ transform: showOutline ? "rotate(90deg)" : "rotate(0deg)", transition: "0.2s" }} />
         </div>
-        {showOutline && (
-          <div style={styles.outlineContent}>
-            Headings you add to the document will appear here.
-          </div>
-        )}
+        {showOutline && <div style={styles.outlineContent}>Headings you add to the document will appear here.</div>}
       </div>
-
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { display: none; }
         .custom-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -207,77 +173,19 @@ export default function Sidebar({ fileId, tabs, setTabs, activeTabId, setActiveT
 }
 
 const styles = {
-  sidebar: {
-    width: "260px",
-    backgroundColor: "#fff",
-    borderRight: "1px solid #e0e0e0",
-    display: "flex",
-    flexDirection: "column",
-    padding: "16px 0px",
-    height: "100%",
-  },
-  headerRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: "0 16px 12px 16px",
-  },
+  sidebar: { width: "260px", backgroundColor: "#fff", borderRight: "1px solid #e0e0e0", display: "flex", flexDirection: "column", padding: "16px 0px", height: "100%" },
+  headerRow: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px 12px 16px" },
   sectionHeader: { fontSize: "14px", color: "#3C4043", margin: 0 },
-  iconAddBtn: {
-    background: "none",
-    border: "none",
-    cursor: "pointer",
-    color: "#5F6368",
-    padding: "4px",
-    borderRadius: "50%",
-    display: "flex",
-    alignItems: "center",
-    transition: "background-color 0.2s",
-  },
+  iconAddBtn: { background: "none", border: "none", cursor: "pointer", color: "#5F6368", padding: "4px", borderRadius: "50%", display: "flex", alignItems: "center", transition: "background-color 0.2s" },
   tabList: { flex: 1, overflowY: "auto" },
   tabWrapper: { paddingRight: "8px" },
-  tabItem: {
-    position: "relative",
-    display: "flex",
-    alignItems: "center",
-    padding: "0 12px 0 16px",
-    height: "40px",
-    borderRadius: "0 24px 24px 0",
-    cursor: "pointer",
-    margin: "2px 0",
-  },
+  tabItem: { position: "relative", display: "flex", alignItems: "center", padding: "0 12px 0 16px", height: "40px", borderRadius: "0 24px 24px 0", cursor: "pointer", margin: "2px 0" },
   tabLabelGroup: { display: "flex", alignItems: "center", flex: 1, overflow: "hidden" },
-  activeIndicator: {
-    position: "absolute",
-    left: 0,
-    height: "24px",
-    width: "4px",
-    backgroundColor: "#1967D2",
-    borderRadius: "0 2px 2px 0",
-  },
+  activeIndicator: { position: "absolute", left: 0, height: "24px", width: "4px", backgroundColor: "#1967D2", borderRadius: "0 2px 2px 0" },
   tabName: { fontSize: "14px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   menuButton: { background: "none", border: "none", cursor: "pointer", display: "flex", padding: "6px" },
-  dropdown: {
-    position: "absolute",
-    top: "32px",
-    right: "0",
-    backgroundColor: "#fff",
-    border: "1px solid #e0e0e0",
-    borderRadius: "8px",
-    boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
-    zIndex: 1000,
-    width: "160px",
-    padding: "6px 0",
-  },
-  menuItem: {
-    padding: "10px 16px",
-    fontSize: "13px",
-    display: "flex",
-    alignItems: "center",
-    gap: "12px",
-    cursor: "pointer",
-    color: "#3C4043",
-  },
+  dropdown: { position: "absolute", top: "32px", right: "0", backgroundColor: "#fff", border: "1px solid #e0e0e0", borderRadius: "8px", boxShadow: "0 2px 10px rgba(0,0,0,0.1)", zIndex: 1000, width: "160px", padding: "6px 0" },
+  menuItem: { padding: "10px 16px", fontSize: "13px", display: "flex", alignItems: "center", gap: "12px", cursor: "pointer", color: "#3C4043" },
   divider: { height: "1px", backgroundColor: "#e0e0e0", margin: "4px 0" },
   outlineSection: { marginTop: "auto", borderTop: "1px solid #e0e0e0", padding: "16px" },
   outlineHeader: { display: "flex", alignItems: "center", gap: "12px", fontSize: "14px", cursor: "pointer" },
