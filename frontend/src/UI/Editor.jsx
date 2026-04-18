@@ -11,9 +11,10 @@ const PADDING = 96;
 const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTabId, tabs, onContentChange }, ref) => {
   const containerRef = useRef(null);
   const saveTimeoutRef = useRef(null);
+  const isInitialized = useRef(false); 
+  const lastLoadedTabId = useRef(null);
   const docId = doc?.id || doc?.file_id;
   const [isVisible, setIsVisible] = useState(false);
-  const lastLoadedTabId = useRef(null);
 
   useImperativeHandle(ref, () => ({
     handleRename: async (newName) => {
@@ -37,6 +38,13 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
     }
   }));
 
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      if (onContentChange) onContentChange(getLiveContent());
+    };
+  }, []);
+
   // Helper to get current text/HTML from the DOM for saving
   const getLiveContent = () => {
     if (!containerRef.current) return { pages: [""] };
@@ -48,14 +56,15 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
   const triggerAutoSave = () => {
     setSaveStatus("saving");
     const contentObj = getLiveContent();
-
     // Tell the parent (App.jsx) exactly what is on screen right now
     if (onContentChange) onContentChange(contentObj);
 
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    
     saveTimeoutRef.current = setTimeout(async () => {
       try {
         if (!activeTabId) return;
+        
         const token = localStorage.getItem("token");
         const url = `http://localhost:8000/api/files/tabs/${activeTabId}`;
         const body = JSON.stringify({ content: contentObj });
@@ -77,7 +86,6 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
       }
     }, 1500);
   };
-
   // Logic to move extra lines between pages to maintain document flow
   const handleLayout = (el) => {
     const parentPage = el.parentElement;
@@ -125,7 +133,6 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
       }
     }
   };
-
   // Manages keyboard interactions like jumping pages on backspace
   const handleKeyDown = (el, e) => {
     if (e.key === "Enter") {
@@ -138,8 +145,7 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
       const selection = window.getSelection();
       if (!selection.rangeCount || !selection.isCollapsed) return;
       const range = selection.getRangeAt(0);
-
-      // Detection: Is the cursor at the absolute start of the page content?
+     // cursor at the  start of the page content
       const preCursorRange = range.cloneRange();
       preCursorRange.selectNodeContents(el);
       preCursorRange.setEnd(range.startContainer, range.startOffset);
@@ -214,11 +220,9 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
     const labels = containerRef.current?.querySelectorAll(".page-number-label") || [];
     labels.forEach((label, i) => { label.innerText = i + 1; });
   };
-
   // Content Loading & Syncing from Tabs
   useEffect(() => {
     if (!containerRef.current || !activeTabId || !tabs) return;
-    if (lastLoadedTabId.current === activeTabId) return;
 
     const loadTabContent = () => {
       setIsVisible(false);
@@ -227,6 +231,7 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
       const currentTab = tabs.find(t => String(t.id) === String(activeTabId));
       if (currentTab) {
         let contentData = currentTab.content;
+
         if (typeof contentData === "string" && contentData !== "") {
           try { contentData = JSON.parse(contentData); } 
           catch (e) { contentData = { pages: [""] }; }
@@ -238,11 +243,16 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
         lastLoadedTabId.current = activeTabId;
         setSaveStatus("saved");
         setIsVisible(true);
-        if (onContentChange) onContentChange(contentData || { pages: [""] });
+        
+        if (isInitialized.current && onContentChange) {
+           onContentChange(contentData || { pages: [""] });
+        }
+        isInitialized.current = true;
       }
     };
+
     loadTabContent();
-  }, [activeTabId, tabs]); 
+  }, [activeTabId, tabs]);
 
   return (
     <main style={{ 
