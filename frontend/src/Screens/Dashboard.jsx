@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars */
 /* eslint-disable no-undef */
 import React, { useEffect, useState, useContext, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams, useLocation } from "react-router-dom"; // Added useLocation
 import { uploadFile, getPreviewUrl, deleteFile, createBlankDoc, renameFile, moveFile } from "../api/fileService"; 
 import { getFolders, createFolder, deleteFolder, renameFolder, downloadFolder } from "../api/folderService";
 import uploadIcon from "../assets/uploadbutton.png";
@@ -104,8 +104,8 @@ const FileItem = ({ doc, onOpenDoc, onOpenMenu, isRecentDoc, onDragStart }) => {
         >
           <span style={{ fontSize: 16, fontWeight: 600, color: isHovered ? "#4285f4" : "#202124" }}>
             {isRecentDoc ? "DOC" : 
-             doc.mime_type === "application/pdf" ? "PDF" : 
-             doc.mime_type === "text/plain" ? "TXT" : "FILE"}
+              doc.mime_type === "application/pdf" ? "PDF" : 
+              doc.mime_type === "text/plain" ? "TXT" : "FILE"}
           </span>
         </div>
 
@@ -156,6 +156,8 @@ const FileItem = ({ doc, onOpenDoc, onOpenMenu, isRecentDoc, onDragStart }) => {
 
 const DashBoard = ({ setDocuments }) => {
   const navigate = useNavigate();
+  const location = useLocation(); // Added hook for search result state
+  const [searchParams, setSearchParams] = useSearchParams(); 
   const [user, setUser] = useState(null);
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -210,6 +212,29 @@ const DashBoard = ({ setDocuments }) => {
 
     initialize();
   }, [navigate]);
+
+  // Sync folderStack with URL's folderId parameter
+  useEffect(() => {
+    const folderId = searchParams.get("folderId");
+    if (folderId) {
+      if (!currentFolderId || String(currentFolderId) !== String(folderId)) {
+        setFolderStack([{ id: folderId, name: "Folder" }]); 
+      }
+    } else {
+      if (folderStack.length > 0) {
+        setFolderStack([]);
+      }
+    }
+  }, [searchParams]);
+
+  // Handle incoming search results that want to open a preview
+  useEffect(() => {
+    if (location.state?.openPreviewUrl) {
+      setPreviewUrl(location.state.openPreviewUrl);
+      // Clean up the history state so it doesn't re-open on manual refresh
+      window.history.replaceState({}, document.title);
+    }
+  }, [location]);
 
   // Fetch folders for current profile
   const fetchFolders = useCallback(async () => {
@@ -346,6 +371,7 @@ const DashBoard = ({ setDocuments }) => {
     } else {
       try {
         const { url } = await getPreviewUrl(doc.id);
+        // Instead of opening a modal, we set this to trigger the inline view
         setPreviewUrl(url);
       } catch (err) {
         console.error(err);
@@ -459,12 +485,19 @@ const DashBoard = ({ setDocuments }) => {
 
   // Open folder
   const handleFolderClick = (folder) => {
+    setSearchParams({ folderId: folder.id }); // Update URL instead of just local state
     setFolderStack((prev) => [...prev, folder]);
   };
 
   // Go back one folder
   const handleGoBack = () => {
-    setFolderStack((prev) => prev.slice(0, -1));
+    const newStack = folderStack.slice(0, -1);
+    if (newStack.length === 0) {
+      setSearchParams({}); // Clear URL params if at home
+    } else {
+      setSearchParams({ folderId: newStack[newStack.length - 1].id });
+    }
+    setFolderStack(newStack);
   };
 
   // Drag file handler
@@ -509,6 +542,29 @@ const DashBoard = ({ setDocuments }) => {
     return (
       <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", height: "80vh", fontSize: 18, color: "#5f6368" }}>
         Loading your workspace...
+      </div>
+    );
+  }
+
+  // If previewUrl is present show only the preview content 
+  if (previewUrl) {
+    return (
+      <div style={{ flex: 1, backgroundColor: "white", display: "flex", flexDirection: "column" }}>
+        <div style={{ padding: "10px 20px", borderBottom: "1px solid #E5E7EB", display: "flex", alignItems: "center" }}>
+          <button 
+            onClick={() => setPreviewUrl(null)} 
+            style={{ padding: "8px 16px", borderRadius: 4, border: "1px solid #dadce0", cursor: "pointer", backgroundColor: "white", fontSize: 14 }}
+          >
+            ← Back to Dashboard
+          </button>
+        </div>
+        <div style={{ flex: 1 }}>
+          <iframe 
+            src={previewUrl} 
+            title="File Preview" 
+            style={{ width: "100%", height: "calc(100vh - 120px)", border: "none" }} 
+          />
+        </div>
       </div>
     );
   }
@@ -575,7 +631,10 @@ const DashBoard = ({ setDocuments }) => {
             <div>
               <span
                 style={{ cursor: "pointer" }}
-                onClick={() => setFolderStack([])}
+                onClick={() => {
+                  setSearchParams({}); // Use URL update for home
+                  setFolderStack([]);
+                }}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => {
                   e.preventDefault();
@@ -589,7 +648,11 @@ const DashBoard = ({ setDocuments }) => {
                   {" / "}
                   <span
                     style={{ cursor: "pointer", fontWeight: 500 }}
-                    onClick={() => setFolderStack(folderStack.slice(0, index + 1))}
+                    onClick={() => {
+                      const newStack = folderStack.slice(0, index + 1);
+                      setSearchParams({ folderId: folder.id });
+                      setFolderStack(newStack);
+                    }}
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={(e) => {
                       e.preventDefault();
@@ -648,15 +711,6 @@ const DashBoard = ({ setDocuments }) => {
         <button onClick={handleUpload} disabled={uploading} style={{ position: "fixed", bottom: 190, right: 30, padding: "10px 20px", backgroundColor: "#4285f4", color: "white", border: "none", borderRadius: 6, cursor: "pointer", zIndex: 1000 }}>
           {uploading ? "Uploading..." : `Upload ${file.name}`}
         </button>
-      )}
-
-      {/* File Preview */}
-      {previewUrl && (
-        <div onClick={() => setPreviewUrl(null)} style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "rgba(0,0,0,0.7)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ width: "80%", height: "80%", backgroundColor: "white", borderRadius: 8, overflow: "hidden" }}>
-            <iframe src={previewUrl} title="File Preview" style={{ width: "100%", height: "100%", border: "none" }} />
-          </div>
-        </div>
       )}
 
       {/* Context Menu Rendering */}
