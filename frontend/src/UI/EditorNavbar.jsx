@@ -63,12 +63,21 @@ export default function EditorNavbar({
       
       <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
         
-        <div onClick={() => navigate("/")} style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "8px",
-          cursor: "pointer",
-        }}>
+        <div 
+          onClick={() => navigate("/")} 
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: "40px",
+            height: "40px",
+            borderRadius: "50%",
+            cursor: "pointer",
+            transition: "background-color 0.2s ease",
+          }}
+          onMouseOver={(e) => (e.currentTarget.style.backgroundColor = "#F3F4F6")}
+          onMouseOut={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+        >
           <img src={logo} alt="logo" style={{ width: "28px", height: "28px" }} />
         </div>
 
