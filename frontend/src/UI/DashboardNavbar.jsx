@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { ProfileContext } from "../UI/ProfileContext";
 import logo from "../assets/file_icon_logo.png";
 import logoutIcon from "../assets/logout.png";
-import { getFiles, getPreviewUrl } from "../api/fileService"; // Added getPreviewUrl
+import { getFiles, getPreviewUrl } from "../api/fileService";
 import { getFolders } from "../api/folderService";
 
 export default function DashboardNavbar({ user }) {
@@ -16,7 +16,7 @@ export default function DashboardNavbar({ user }) {
   } = useContext(ProfileContext);
 
   const [showDropdown, setShowDropdown] = useState(false);
-  const [showSearchDropdown, setShowSearchDropdown] = useState(false); 
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState({ files: [], folders: [] });
   const [isSearching, setIsSearching] = useState(false);
@@ -39,10 +39,10 @@ export default function DashboardNavbar({ user }) {
               getFiles(currentProfile?.id, null, query),
               !query.startsWith("type:") ? getFolders(currentProfile?.id, null, query) : Promise.resolve([])
             ]);
-            
-            setSearchResults({ 
-              files: files.filter(f => f.type !== "folder"), 
-              folders: folders 
+
+            setSearchResults({
+              files: files.filter(f => f.type !== "folder"),
+              folders: folders
             });
           }
         } catch (err) {
@@ -82,38 +82,28 @@ export default function DashboardNavbar({ user }) {
     setShowDropdown(false);
   };
 
-  // FIXED: Navigation now integrates with Dashboard's internal preview system
   const handleResultClick = async (item, type) => {
-    // Clear the search UI immediately
     setShowSearchDropdown(false);
     setSearchQuery("");
     setSearchResults({ files: [], folders: [] });
-    
-    // 1. Handle Folders
+
     if (type === 'folder' || item.type === 'folder') {
       navigate(`/dashboard?folderId=${item.id}`);
       return;
     }
 
-    // 2. Identify file extension for PDF and TXT
     const fileName = item.name?.toLowerCase() || "";
     const isExternalFile = fileName.endsWith(".pdf") || fileName.endsWith(".txt");
 
-    // 3. Navigation Logic
     if (isExternalFile) {
       try {
-        // Fetch the preview URL from the backend
         const { url } = await getPreviewUrl(item.id);
-        
-        // Navigate to dashboard and pass the preview URL in the state
-        // This allows DashBoard.jsx to see the 'preview' state and trigger the inline viewer
         navigate("/dashboard", { state: { openPreviewUrl: url } });
       } catch (err) {
         console.error("Failed to fetch preview for search result:", err);
         alert("Could not open preview.");
       }
     } else {
-      // Default: Go to the editor for .idoc / standard documents
       navigate(`/editor/${item.id}`);
     }
   };
@@ -147,6 +137,12 @@ export default function DashboardNavbar({ user }) {
             value={searchQuery}
             onFocus={() => setShowSearchDropdown(true)}
             onChange={(e) => setSearchQuery(e.target.value)}
+            onMouseOver={(e) => {
+              if (!showSearchDropdown) e.currentTarget.style.backgroundColor = "#DADCE0";
+            }}
+            onMouseOut={(e) => {
+              if (!showSearchDropdown) e.currentTarget.style.backgroundColor = "#F1F3F4";
+            }}
             style={{
               width: "100%",
               padding: "12px 20px 12px 45px",
@@ -173,16 +169,36 @@ export default function DashboardNavbar({ user }) {
               {searchQuery.length === 0 ? (
                 <div style={{ padding: "8px 0" }}>
                   <div style={{ padding: "10px 20px", color: "#5F6368", fontSize: "12px", fontWeight: "bold" }}>SEARCH FILTERS</div>
-                  <div style={filterItemStyle} onClick={() => setSearchQuery("type:document")}>
+                  <div 
+                    style={filterItemStyle} 
+                    onClick={() => setSearchQuery("type:document")}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F1F3F4"}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+                  >
                     <span style={{ marginRight: "12px" }}>📄</span> Documents
                   </div>
-                  <div style={filterItemStyle} onClick={() => setSearchQuery("type:folder")}>
+                  <div 
+                    style={filterItemStyle} 
+                    onClick={() => setSearchQuery("type:folder")}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F1F3F4"}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+                  >
                     <span style={{ marginRight: "12px" }}>📁</span> Folders
                   </div>
-                  <div style={filterItemStyle} onClick={() => setSearchQuery("type:pdf")}>
+                  <div 
+                    style={filterItemStyle} 
+                    onClick={() => setSearchQuery("type:pdf")}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F1F3F4"}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+                  >
                     <span style={{ marginRight: "12px" }}>📑</span> PDFs
                   </div>
-                  <div style={filterItemStyle} onClick={() => setSearchQuery("type:txt")}>
+                  <div 
+                    style={filterItemStyle} 
+                    onClick={() => setSearchQuery("type:txt")}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F1F3F4"}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+                  >
                     <span style={{ marginRight: "12px" }}>📝</span> Text Files
                   </div>
                 </div>
@@ -193,16 +209,28 @@ export default function DashboardNavbar({ user }) {
                   ) : (
                     <>
                       {searchResults.folders.map(folder => (
-                        <div key={folder.id} style={resultItemStyle} onClick={() => handleResultClick(folder, 'folder')}>
+                        <div 
+                          key={folder.id} 
+                          style={resultItemStyle} 
+                          onClick={() => handleResultClick(folder, 'folder')}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F1F3F4"}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+                        >
                           <span style={{ marginRight: "12px" }}>📁</span> {folder.name}
                         </div>
                       ))}
                       {searchResults.files.map(file => (
-                        <div key={file.id} style={resultItemStyle} onClick={() => handleResultClick(file, 'file')}>
+                        <div 
+                          key={file.id} 
+                          style={resultItemStyle} 
+                          onClick={() => handleResultClick(file, 'file')}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F1F3F4"}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+                        >
                           <span style={{ marginRight: "12px" }}>
-                            {file.name.toLowerCase().endsWith('.pdf') ? '📑' : 
-                             file.name.toLowerCase().endsWith('.txt') ? '📝' : '📄'}
-                          </span> {file.name}
+                            {file.name.toLowerCase().endsWith('.pdf') ? '📑' :
+                              file.name.toLowerCase().endsWith('.txt') ? '📝' : '📄'}
+                          </span> {file.name.replace(/\.idoc$/, "")}
                         </div>
                       ))}
                       {searchResults.files.length === 0 && searchResults.folders.length === 0 && (
@@ -222,7 +250,12 @@ export default function DashboardNavbar({ user }) {
         {user && <span style={{ fontWeight: "500", color: "#202124" }}>{user.username}</span>}
         {currentProfile && (
           <div style={{ position: "relative" }}>
-            <button onClick={() => setShowDropdown(!showDropdown)} style={profileButtonStyle}>
+            <button
+              onClick={() => setShowDropdown(!showDropdown)}
+              style={profileButtonStyle}
+              onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#E8EAED"}
+              onMouseOut={(e) => e.currentTarget.style.backgroundColor = "#F1F3F4"}
+            >
               {currentProfile.name} ▼
             </button>
             {showDropdown && (
@@ -234,7 +267,13 @@ export default function DashboardNavbar({ user }) {
                     <div key={type}>
                       <div style={{ padding: "6px 14px", fontSize: "11px", fontWeight: "600", color: "#5F6368", textTransform: "uppercase" }}>{type}</div>
                       {group.map(p => (
-                        <div key={p.id} onClick={() => handleSwitchProfile(p)} style={dropdownItemStyle}>
+                        <div
+                          key={p.id}
+                          onClick={() => handleSwitchProfile(p)}
+                          style={dropdownItemStyle}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F1F3F4"}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+                        >
                           {p.name}
                         </div>
                       ))}
@@ -245,7 +284,24 @@ export default function DashboardNavbar({ user }) {
             )}
           </div>
         )}
-        <img src={logoutIcon} alt="logout" onClick={handleLogout} style={{ width: "20px", height: "20px", cursor: "pointer", opacity: 0.7 }} />
+
+        {/* Logout Icon */}
+        <div
+          onClick={handleLogout}
+          style={{
+            padding: "8px",
+            borderRadius: "50%",
+            cursor: "pointer",
+            transition: "background-color 0.2s",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center"
+          }}
+          onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#E8EAED"}
+          onMouseOut={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+        >
+          <img src={logoutIcon} alt="logout" style={{ width: "20px", height: "20px", display: "block" }} />
+        </div>
       </div>
     </header>
   );
@@ -253,16 +309,16 @@ export default function DashboardNavbar({ user }) {
 
 const filterItemStyle = {
   padding: "10px 24px", cursor: "pointer", display: "flex", alignItems: "center", color: "#3C4043", fontSize: "14px",
-  transition: "background 0.1s", backgroundColor: "transparent"
+  transition: "background 0.2s", backgroundColor: "transparent"
 };
 
 const resultItemStyle = {
   padding: "10px 24px", cursor: "pointer", display: "flex", alignItems: "center", borderBottom: "1px solid #f1f3f4",
-  fontSize: "14px", color: "#202124"
+  fontSize: "14px", color: "#202124", transition: "background 0.2s"
 };
 
 const profileButtonStyle = {
-  padding: "6px 12px", backgroundColor: "#F1F3F4", border: "none", borderRadius: "6px", cursor: "pointer", color: "#202124", fontWeight: "500"
+  padding: "6px 12px", backgroundColor: "#F1F3F4", border: "none", borderRadius: "6px", cursor: "pointer", color: "#202124", fontWeight: "500", transition: "background 0.2s"
 };
 
 const profileDropdownStyle = {
@@ -271,5 +327,5 @@ const profileDropdownStyle = {
 };
 
 const dropdownItemStyle = {
-  padding: "8px 14px", cursor: "pointer", color: "#202124"
+  padding: "8px 14px", cursor: "pointer", color: "#202124", transition: "background 0.2s"
 };
