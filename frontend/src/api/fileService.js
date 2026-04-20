@@ -4,7 +4,7 @@ const CHUNK_SIZE = 10 * 1024 * 1024;
 // Increased max limit to be 100MB(102,400kb)
 const MAX_FILE_SIZE = 100 * 1024 * 1024; 
 
-// Fetch list of files for the current user - Updated to support search
+// Fetch list of files for the current user 
 export const getFiles = async (profileId, folderId = null, search = "") => {
   const token = localStorage.getItem("token");
 
@@ -44,15 +44,14 @@ const validateFile = (file) => {
   }
 };
 
-// Upload file using presigned URL
-export const uploadFile = async (file, profileId, folderId = null, progressCallback = null) => {
-  validateFile(file);
+// Extract initiation logic to get ID immediately for cancellation handling
+export const initiateUpload = async (file, profileId, folderId = null) => {
   const token = localStorage.getItem("token");
+  const actualProfileId = profileId || localStorage.getItem("currentProfileId");
+  
+  if (!actualProfileId) throw new Error("No profile selected");
 
-  if (!profileId) profileId = localStorage.getItem("currentProfileId");
-  if (!profileId) throw new Error("No profile selected");
-
-  const initiateResp = await fetch(`${API_URL}/files/initiate-upload`, {
+  const response = await fetch(`${API_URL}/files/initiate-upload`, {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${token}`,
@@ -63,16 +62,25 @@ export const uploadFile = async (file, profileId, folderId = null, progressCallb
       size_bytes: file.size,
       mime_type: file.type,
       folder_id: folderId || null,
-      profile_id: profileId,
+      profile_id: actualProfileId,
     }),
   });
 
-  if (!initiateResp.ok) {
-    const errData = await initiateResp.json().catch(() => ({ detail: "Failed to initiate upload" }));
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({ detail: "Failed to initiate upload" }));
     throw new Error(errData.detail || "Failed to initiate upload");
   }
 
-  const { presigned_url, file_id, upload_id } = await initiateResp.json();
+  return response.json(); // Returns { file_id, presigned_url, upload_id }
+};
+
+// Upload file using presigned URL
+export const uploadFile = async (file, profileId, folderId = null, progressCallback = null, signal = null, initData = null) => {
+  validateFile(file);
+  const token = localStorage.getItem("token");
+
+  // If initData is passed, use it; otherwise, initiate now
+  const { file_id, upload_id, presigned_url } = initData || await initiateUpload(file, profileId, folderId);
 
   if (upload_id) {
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
@@ -95,10 +103,11 @@ export const uploadFile = async (file, profileId, folderId = null, progressCallb
           part_number: partNumber,
           upload_id: upload_id
         }),
+        signal
       });
 
       const { presigned_url: chunkUrl } = await chunkUrlResp.json();
-      const s3Resp = await fetch(chunkUrl, { method: "PUT", body: chunk });
+      const s3Resp = await fetch(chunkUrl, { method: "PUT", body: chunk, signal });
       if (!s3Resp.ok) throw new Error(`Chunk ${partNumber} upload failed`);
 
       const etag = s3Resp.headers.get("ETag");
@@ -120,6 +129,7 @@ export const uploadFile = async (file, profileId, folderId = null, progressCallb
         upload_id: upload_id,
         parts: completedParts
       }),
+      signal
     });
 
     if (!completeResp.ok) throw new Error("Failed to finalize chunked upload");
@@ -129,6 +139,7 @@ export const uploadFile = async (file, profileId, folderId = null, progressCallb
       method: "PUT",
       headers: { "Content-Type": file.type },
       body: file,
+      signal
     });
 
     if (!s3Resp.ok) throw new Error("Upload to S3 failed");
@@ -136,6 +147,7 @@ export const uploadFile = async (file, profileId, folderId = null, progressCallb
     const completeResp = await fetch(`${API_URL}/files/${file_id}/complete`, {
       method: "POST",
       headers: { "Authorization": `Bearer ${token}` },
+      signal
     });
 
     if (!completeResp.ok) throw new Error("Failed to finalize upload");
@@ -323,4 +335,23 @@ export const deleteTab = async (tabId) => {
   });
   if (!response.ok) throw new Error("Failed to delete tab");
   return true;
+};
+
+// Cancel an upload
+export const cancelFileUpload = async (fileId) => {
+  const token = localStorage.getItem("token");
+  const response = await fetch(`${API_URL}/files/${fileId}/cancel`, {
+    method: "PATCH",
+    headers: { 
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+  });
+
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({ detail: "Failed to cancel upload" }));
+    throw new Error(errData.detail || "Failed to cancel upload");
+  }
+  
+  return response.json();
 };
