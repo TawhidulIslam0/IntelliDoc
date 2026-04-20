@@ -2,7 +2,7 @@
 /* eslint-disable no-undef */
 import React, { useEffect, useState, useContext, useCallback } from "react";
 import { useNavigate, useSearchParams, useLocation } from "react-router-dom"; // Added useLocation
-import { uploadFile, getPreviewUrl, deleteFile, createBlankDoc, renameFile, moveFile } from "../api/fileService"; 
+import { uploadFile, getPreviewUrl, deleteFile, createBlankDoc, renameFile, moveFile, cancelFileUpload } from "../api/fileService"; 
 import { getFolders, createFolder, deleteFolder, renameFolder, downloadFolder } from "../api/folderService";
 import uploadIcon from "../assets/uploadbutton.png";
 import folderIcon from "../assets/folderbutton.png";
@@ -167,6 +167,12 @@ const DashBoard = ({ setDocuments }) => {
   const [previewUrl, setPreviewUrl] = useState(null);
   const [menuConfig, setMenuConfig] = useState(null); // Menu state
   const [draggedFile, setDraggedFile] = useState(null);
+  
+  // Track specific file ID for server-side cancellation
+  const [activeFileId, setActiveFileId] = useState(null);
+
+  // New state to manage upload cancellation
+  const [uploadController, setUploadController] = useState(null);
 
   // New state for handling upload progress tracking
   const [uploadInfo, setUploadInfo] = useState({
@@ -436,9 +442,46 @@ const DashBoard = ({ setDocuments }) => {
     setFile(selectedFile);
   };
 
+  // Cancel upload
+  const handleCancelUpload = async () => {
+    if (uploadController) {
+      uploadController.abort();
+      
+      // If we have an active file ID, notify the server to cleanup
+      if (activeFileId) {
+        try {
+          await cancelFileUpload(activeFileId);
+        } catch (err) {
+          console.error("Failed to cancel upload on server:", err);
+        }
+      }
+    }
+    setUploading(false);
+    setFile(null);
+    setActiveFileId(null);
+    // Reset state to null/default to hide the bar
+    setUploadInfo({ progress: 0, fileName: '', isUploading: false, error: null });
+    
+    // Clear input
+    const input = document.getElementById("fileUploadInput");
+    if (input) input.value = "";
+  };
+
   // Upload file
   const handleUpload = async () => {
     if (!file) return alert("Please select a file first.");
+
+    // Duplicate check
+    const isDuplicate = fetchedDocuments.some(doc => doc.name === file.name);
+    if (isDuplicate) {
+      alert("A file with this name already exists in this location.");
+      return;
+    }
+    
+    // Create new AbortController for this request
+    const controller = new AbortController();
+    setUploadController(controller);
+
     try {
       setUploading(true);
       // Initialize the progress bar state
@@ -450,19 +493,43 @@ const DashBoard = ({ setDocuments }) => {
       });
 
       // Passing the callback to the uploadFile API to update the state
-      await uploadFile(file, currentProfile.id, currentFolderId, (percent) => {
-        setUploadInfo(prev => ({ ...prev, progress: percent }));
-      });
+      const result = await uploadFile(
+        file, 
+        currentProfile.id, 
+        currentFolderId, 
+        (percent) => {
+          setUploadInfo(prev => ({ ...prev, progress: percent }));
+        },
+        controller.signal
+      );
+      
+      // Track file ID if returned for cancellation support
+      if (result && result.file_id) {
+        setActiveFileId(result.file_id);
+      }
 
       alert("File uploaded successfully");
       setFile(null);
+      setActiveFileId(null);
+      
+      // Clear input
+      const input = document.getElementById("fileUploadInput");
+      if (input) input.value = "";
+
       await fetchFiles(currentFolderId);
     } catch (err) {
-      console.error(err);
-      setUploadInfo(prev => ({ ...prev, error: err.message, isUploading: false }));
-      alert("File upload failed: " + err.message);
+      if (err.name === 'AbortError') {
+        console.log("Upload aborted by user");
+        // Reset the UI state immediately so the bar vanishes
+        setUploadInfo({ progress: 0, fileName: '', isUploading: false, error: null });
+      } else {
+        console.error(err);
+        setUploadInfo(prev => ({ ...prev, error: err.message, isUploading: false }));
+        alert("File upload failed: " + err.message);
+      }
     } finally {
       setUploading(false);
+      setUploadController(null);
       // Wait briefly so user sees the 100% completion before hiding the bar
       setTimeout(() => {
         setUploadInfo(prev => ({ ...prev, isUploading: false }));
@@ -708,9 +775,16 @@ const DashBoard = ({ setDocuments }) => {
       <img src={uploadIcon} alt="Upload" onClick={() => document.getElementById("fileUploadInput").click()} style={{ position: "fixed", bottom: 30, right: 30, width: 60, height: 60, cursor: "pointer", zIndex: 1000 }} />
 
       {file && (
-        <button onClick={handleUpload} disabled={uploading} style={{ position: "fixed", bottom: 190, right: 30, padding: "10px 20px", backgroundColor: "#4285f4", color: "white", border: "none", borderRadius: 6, cursor: "pointer", zIndex: 1000 }}>
-          {uploading ? "Uploading..." : `Upload ${file.name}`}
-        </button>
+        <div style={{ position: "fixed", bottom: 190, right: 30, display: "flex", gap: "10px", zIndex: 1000 }}>
+          {uploading && (
+             <button onClick={handleCancelUpload} style={{ padding: "10px 20px", backgroundColor: "#d93025", color: "white", border: "none", borderRadius: 6, cursor: "pointer" }}>
+               Cancel
+             </button>
+          )}
+          <button onClick={handleUpload} disabled={uploading} style={{ padding: "10px 20px", backgroundColor: "#4285f4", color: "white", border: "none", borderRadius: 6, cursor: "pointer" }}>
+            {uploading ? "Uploading..." : `Upload ${file.name}`}
+          </button>
+        </div>
       )}
 
       {/* Context Menu Rendering */}
