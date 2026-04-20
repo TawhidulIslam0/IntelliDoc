@@ -1,4 +1,5 @@
 import React from 'react';
+
 /**
  * @param {number} progress - Current upload percentage (0-100)
  * @param {string} fileName - Name of the file being processed
@@ -6,8 +7,8 @@ import React from 'react';
  * @param {string} error - Error message if the upload fails
  */
 const FileProgressBar = ({ progress, fileName, isUploading, error }) => {
-  // Hide the component if there's no active upload, no error, and no progress
-  if (!isUploading && !error && (progress === 0 || progress === 100)) {
+  //  If it's not uploading and there's no error, hide the component completely.
+  if (!isUploading && !error) {
     return null;
   }
 
@@ -29,14 +30,14 @@ const FileProgressBar = ({ progress, fileName, isUploading, error }) => {
       margin: "20px 0",
       boxSizing: "border-box"
     }}>
-      <div style={{ display: "flex", itemsCenter: "center", justifyContent: "space-between", marginBottom: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
         
-        {/*File Info & Badge */}
+        {/* File Info & Badge */}
         <div style={{ display: "flex", alignItems: "center", gap: 15 }}>
           
           {/* Badge */}
           <div style={{
-            backgroundColor: "#a3f7e1", // Very light teal background
+            backgroundColor: "#a3f7e1",
             color: tealLightText,
             fontSize: 10,
             fontWeight: 700,
@@ -77,8 +78,7 @@ const FileProgressBar = ({ progress, fileName, isUploading, error }) => {
           style={{
             height: "100%",
             borderRadius: 20,
-            transition: "width 0.4s ease-out", // Transition from previous recommendation
-            // Switch color on error
+            transition: "width 0.4s ease-out",
             backgroundColor: error ? redError : tealMain,
             width: `${progress}%`
           }}
