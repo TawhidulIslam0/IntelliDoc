@@ -23,6 +23,7 @@ class File(Base):
     mime_type: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[str] = mapped_column(String(50))
     updated_at: Mapped[str] = mapped_column(String(50))
+    upload_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     # Relationships
     owner: Mapped["User"] = relationship(back_populates="files")
