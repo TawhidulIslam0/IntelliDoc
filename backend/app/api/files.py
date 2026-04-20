@@ -122,10 +122,15 @@ async def initiate_upload(
     ).scalar_one_or_none()
 
     if existing_file:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="A file with the same name already exists in this folder and profile."
-        )
+        if existing_file.status == "pending":
+            # erase the current file that is pending
+            db.delete(existing_file)
+            db.commit()
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A file with the same name already exists in this folder and profile."
+            )
 
     # Generate unique file ID and S3 key
     file_id = uuid.uuid4()
@@ -164,6 +169,7 @@ async def initiate_upload(
                 ContentType=payload.mime_type
             )
             upload_id = response["UploadId"]
+            new_file.upload_id = upload_id
         else:
             # Generate standard presigned URL for upload
             presigned_url = s3.generate_presigned_url(
@@ -378,10 +384,11 @@ async def list_files(
             for f in folders
         ]
 
-    # Base query: must belong to the user and the selected profile
+    # Base query: must belong to the user, the selected profile, AND be completed
     stmt = select(File).where(
         File.owner_id == current_user.id,
-        File.profile_id == profile_id
+        File.profile_id == profile_id,
+        File.status == "completed"
     )
 
     # Search logic
@@ -814,3 +821,35 @@ async def rename_file(
         "name": file.name,
         "updated_at": file.updated_at
     }
+
+# Mark upload as cancelled and clean up S3
+@router.patch("/{file_id}/cancel")
+async def cancel_upload(
+    file_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    # Verify the file exists and belongs to the user
+    file = db.scalar(
+        select(File).where(File.id == file_id, File.owner_id == current_user.id)
+    )
+
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    #  Clean up S3 if it was a multipart upload
+    if file.upload_id:
+        try:
+            s3.abort_multipart_upload(
+                Bucket=BUCKET_NAME,
+                Key=file.s3_key,
+                UploadId=file.upload_id
+            )
+        except ClientError:
+            pass
+
+    # Delete the record completely from DB 
+    db.delete(file)
+    db.commit()
+
+    return {"message": "Upload cancelled and record deleted"}
