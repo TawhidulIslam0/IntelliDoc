@@ -1,3 +1,9 @@
+"""
+text_extractor.py
+-----------------
+Extracts text from various file formats.
+"""
+
 from pathlib import Path
 from charset_normalizer import from_path
 import pymupdf
