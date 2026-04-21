@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from app.database import Base, engine
-from app.models import user, folder, file, profile, tab
+from app.models import user, folder, file, profile, tab, chunk
 from app.api.users import router as users_router
 from app.api.files import router as files_router
 from app.api.folders import router as folders_router
@@ -38,6 +38,3 @@ app.add_middleware(
     SessionMiddleware,
     secret_key=os.getenv("SECRET_KEY", "dev-secret-key")
 )
-
-# Create tables automatically
-Base.metadata.create_all(bind=engine)
