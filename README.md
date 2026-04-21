@@ -58,6 +58,12 @@ cd frontend
 npm run dev 
 ```
 
+## Alembic Migrations 
+
+1. Create the model in ```models/```
+2. Import in ```alembic/env.py``` 
+3. Generate migration via ```alembic revision --autogenerate -m "drop <column name/table name> from <table name/DB>"```
+4. Apply it to local DB via ```alembic upgrade head```
 
 ##  Features
 
