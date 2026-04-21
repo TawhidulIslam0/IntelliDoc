@@ -2,7 +2,7 @@ fastapi[standard]
 uvicorn[standard]
 sqlalchemy
 psycopg2-binary
-pypdf
+pymupdf
 alembic
 PyJWT
 pwdlib[argon2]
@@ -13,3 +13,4 @@ html2text
 python-docx
 beautifulsoup4
 xhtml2pdf
+transformers
