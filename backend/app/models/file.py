@@ -3,6 +3,10 @@ import uuid
 from typing import Optional
 from sqlalchemy import String, Text, BigInteger, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from app.models.user import User
+from app.models.folder import Folder
+from app.models.profile import Profile
+from app.models.tab import Tab
 
 from app.database import Base
 
