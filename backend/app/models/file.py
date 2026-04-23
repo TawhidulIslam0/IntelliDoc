@@ -34,3 +34,4 @@ class File(Base):
     folder: Mapped[Optional["Folder"]] = relationship(back_populates="files")
     profile: Mapped["Profile"] = relationship(back_populates="files")
     tabs: Mapped[list["Tab"]] = relationship(back_populates="file", cascade="all, delete-orphan")
+    chunks: Mapped[list["Chunk"]] = relationship(back_populates="file", cascade="all, delete-orphan")
