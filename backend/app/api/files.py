@@ -402,9 +402,9 @@ async def list_files(
     stmt = select(File).where(
         File.owner_id == current_user.id,
         File.profile_id == profile_id,
-        File.status == "completed"
+        File.status.in_(["completed", "indexing", "indexed"])
     )
-
+    
     # Search logic
     if search:
         search_query = search.lower().strip()
