@@ -7,6 +7,7 @@ from app.models.user import User
 from app.models.folder import Folder
 from app.models.profile import Profile
 from app.models.tab import Tab
+from app.models.chunk import Chunk
 
 from app.database import Base
 
