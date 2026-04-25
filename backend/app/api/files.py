@@ -6,7 +6,7 @@ import json
 from sqlalchemy import select
 from botocore.exceptions import ClientError
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import Annotated, Optional
 from botocore.config import Config
@@ -20,6 +20,7 @@ from app.models.user import User
 from app.models.profile import Profile
 from app.models.folder import Folder
 from app.models.tab import Tab 
+from app.services.indexer import Indexer
 
 # Load environment variables from .env
 load_dotenv()
@@ -86,6 +87,23 @@ class MoveFileRequest(BaseModel):
     profile_id: uuid.UUID
     folder_id: Optional[uuid.UUID] = None
 
+# Background task to run the indexer after upload completion.
+# Reuses a singleton Indexer so the embedding model is loaded only once per container.
+_indexer: Indexer | None = None
+
+def get_indexer() -> Indexer:
+    global _indexer
+    if _indexer is None:
+        _indexer = Indexer()
+    return _indexer
+
+def _run_indexer(file_id: uuid.UUID) -> None:
+    from app.database import SessionLocal
+
+    with SessionLocal() as db:
+        indexer = get_indexer()
+        indexer.index_file(db, file_id)
+        
 # Create presigned URL for file upload
 @router.post("/initiate-upload", response_model=InitiateUploadResponse, status_code=status.HTTP_201_CREATED)
 async def initiate_upload(
@@ -170,6 +188,8 @@ async def initiate_upload(
             )
             upload_id = response["UploadId"]
             new_file.upload_id = upload_id
+            db.commit()
+            db.refresh(new_file)
         else:
             # Generate standard presigned URL for upload
             presigned_url = s3.generate_presigned_url(
@@ -224,6 +244,7 @@ async def presign_chunk(
 @router.post("/complete-chunked-upload")
 async def complete_chunked_upload(
     payload: CompleteChunkedUploadRequest,
+    background_tasks: BackgroundTasks,   
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
@@ -243,9 +264,11 @@ async def complete_chunked_upload(
 
     file.status = "completed"
     file.updated_at = datetime.now(timezone.utc).isoformat()
-    db.commit()
-    return {"message": "Upload completed successfully"}
 
+    db.commit()
+    background_tasks.add_task(_run_indexer, file.id)
+
+    return {"message": "Upload completed successfully and indexing started"}
 
 # Creating blank document 
 @router.post("/create-blank-doc", status_code=status.HTTP_201_CREATED)
@@ -388,9 +411,9 @@ async def list_files(
     stmt = select(File).where(
         File.owner_id == current_user.id,
         File.profile_id == profile_id,
-        File.status == "completed"
+        File.status.in_(["completed", "indexing", "indexed"])
     )
-
+    
     # Search logic
     if search:
         search_query = search.lower().strip()
@@ -520,6 +543,7 @@ async def download_file(
 @router.post("/{file_id}/complete")
 async def complete_upload(
     file_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
@@ -537,9 +561,11 @@ async def complete_upload(
 
     file.status = "completed"
     file.updated_at = datetime.now(timezone.utc).isoformat()
-    db.commit()
 
-    return {"message": "Upload completed"}
+    db.commit()
+    background_tasks.add_task(_run_indexer, file.id)
+
+    return {"message": "Upload completed and indexing started"}
 
 
 # Delete file from S3 and database
@@ -651,6 +677,7 @@ async def get_tabs(
 async def update_file_content(
     file_id: uuid.UUID,
     payload: UpdateFileContentRequest,
+    background_tasks: BackgroundTasks,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)]
 ):
@@ -690,8 +717,10 @@ async def update_file_content(
 
     file.updated_at = now
     file.size_bytes = len(json.dumps(content).encode("utf-8"))
-    
+    file.status = "completed"
+
     db.commit()
+    background_tasks.add_task(_run_indexer, file.id)
 
     return {"message": "Sync successful", "updated_at": now}
 
@@ -733,6 +762,7 @@ async def update_tab_content(
             pass # DB update remains even if S3 is momentarily unreachable
 
     db.commit()
+    
     return {"message": "Tab updated successfully"}
 
 # move file to different folder

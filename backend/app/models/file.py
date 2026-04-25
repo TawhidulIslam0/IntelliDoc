@@ -7,6 +7,7 @@ from app.models.user import User
 from app.models.folder import Folder
 from app.models.profile import Profile
 from app.models.tab import Tab
+from app.models.chunk import Chunk
 
 from app.database import Base
 
@@ -34,3 +35,4 @@ class File(Base):
     folder: Mapped[Optional["Folder"]] = relationship(back_populates="files")
     profile: Mapped["Profile"] = relationship(back_populates="files")
     tabs: Mapped[list["Tab"]] = relationship(back_populates="file", cascade="all, delete-orphan")
+    chunks: Mapped[list["Chunk"]] = relationship(back_populates="file", cascade="all, delete-orphan")

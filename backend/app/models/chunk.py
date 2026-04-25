@@ -3,7 +3,6 @@ from typing import Optional
 
 from sqlalchemy import Integer, Text, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from app.models.file import File
 from pgvector.sqlalchemy import Vector
 
 from app.database import Base
