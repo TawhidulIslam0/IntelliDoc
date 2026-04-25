@@ -11,8 +11,6 @@ import docx
 import re
 from collections import Counter
 
-from sqlalchemy import text
-
 def _strip_repeating_headers_footers(pages: list[str]) -> list[str]:
     """Remove lines that appear on many pages --- likely running headers/footers.
     Looks at the first and last non-empty line of each page. If a line

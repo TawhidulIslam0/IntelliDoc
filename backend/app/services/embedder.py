@@ -36,7 +36,7 @@ class Embedder:
             self.device = "cpu"
 
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModel.from_pretrained(model_name)
+        self.model = AutoModel.from_pretrained(model_name, use_safetensors=True, trust_remote_code=True)
         self.model.to(self.device)
         self.model.eval()
 

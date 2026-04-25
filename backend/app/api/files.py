@@ -87,12 +87,21 @@ class MoveFileRequest(BaseModel):
     profile_id: uuid.UUID
     folder_id: Optional[uuid.UUID] = None
 
-# Background task to run the indexer after upload completion
+# Background task to run the indexer after upload completion.
+# Reuses a singleton Indexer so the embedding model is loaded only once per container.
+_indexer: Indexer | None = None
+
+def get_indexer() -> Indexer:
+    global _indexer
+    if _indexer is None:
+        _indexer = Indexer()
+    return _indexer
+
 def _run_indexer(file_id: uuid.UUID) -> None:
     from app.database import SessionLocal
 
     with SessionLocal() as db:
-        indexer = Indexer()
+        indexer = get_indexer()
         indexer.index_file(db, file_id)
         
 # Create presigned URL for file upload
@@ -255,8 +264,8 @@ async def complete_chunked_upload(
 
     file.status = "completed"
     file.updated_at = datetime.now(timezone.utc).isoformat()
-    db.commit()
 
+    db.commit()
     background_tasks.add_task(_run_indexer, file.id)
 
     return {"message": "Upload completed successfully and indexing started"}
@@ -552,8 +561,8 @@ async def complete_upload(
 
     file.status = "completed"
     file.updated_at = datetime.now(timezone.utc).isoformat()
-    db.commit()
 
+    db.commit()
     background_tasks.add_task(_run_indexer, file.id)
 
     return {"message": "Upload completed and indexing started"}
@@ -668,6 +677,7 @@ async def get_tabs(
 async def update_file_content(
     file_id: uuid.UUID,
     payload: UpdateFileContentRequest,
+    background_tasks: BackgroundTasks,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)]
 ):
@@ -707,8 +717,10 @@ async def update_file_content(
 
     file.updated_at = now
     file.size_bytes = len(json.dumps(content).encode("utf-8"))
-    
+    file.status = "completed"
+
     db.commit()
+    background_tasks.add_task(_run_indexer, file.id)
 
     return {"message": "Sync successful", "updated_at": now}
 
