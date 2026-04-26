@@ -1,10 +1,12 @@
+/* eslint-disable no-unused-vars */
 import { useState, useRef } from "react";
-import { uploadFile, cancelFileUpload } from "../api/fileService";
-import FileProgressBar from "./FileProgressBar"; // Ensure this path is correct
+import { uploadFile, cancelFileUpload, getResumeUploadStatus } from "../api/fileService";
+import FileProgressBar from "./FileProgressBar";
 
 export default function FileUploader({ refreshFiles, folderId = null, profileId = null }) {
   const [file, setFile] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState("idle"); // 'idle', 'uploading', 'paused', 'error'
+  const [error, setError] = useState(null);
   const [progress, setProgress] = useState(0); 
   
   const abortControllerRef = useRef(null);
@@ -12,7 +14,9 @@ export default function FileUploader({ refreshFiles, folderId = null, profileId 
 
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);
-    setProgress(0); // Reset progress on new file selection
+    setProgress(0);
+    setError(null);
+    setStatus("idle");
   };
 
   const handleCancel = async () => {
@@ -27,36 +31,68 @@ export default function FileUploader({ refreshFiles, folderId = null, profileId 
         console.error("Cleanup failed:", err);
       }
     }
-    setLoading(false);
+    setStatus("idle");
     setFile(null);
     setProgress(0);
+    setError(null);
     currentFileIdRef.current = null;
     const fileInput = document.querySelector('input[type="file"]');
     if (fileInput) fileInput.value = "";
+  };
+
+  const handleResume = async (fileId, fileObj) => {
+    if (!fileObj) return;
+
+    abortControllerRef.current = new AbortController();
+    setStatus("uploading");
+    setError(null);
+    currentFileIdRef.current = fileId;
+
+    try {
+      const resumeData = await getResumeUploadStatus(fileId);
+      
+      await uploadFile(
+        fileObj,
+        profileId,
+        folderId,
+        (p) => setProgress(p),
+        abortControllerRef.current.signal,
+        resumeData 
+      );
+
+      setStatus("idle");
+      setFile(null);
+      setProgress(0);
+      refreshFiles();
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        setStatus("paused");
+      } else {
+        setStatus("error");
+        setError(error.message);
+      }
+    }
   };
 
   const handleUpload = async () => {
     if (!file) return;
 
     abortControllerRef.current = new AbortController();
-    setLoading(true);
+    setStatus("uploading");
+    setError(null);
     setProgress(0);
 
     try {
-      const actualProfileId = profileId || localStorage.getItem("currentProfileId");
-      
       const result = await uploadFile(
         file, 
-        actualProfileId, 
+        profileId, 
         folderId, 
-        (p) => setProgress(p), // Pass setter to update progress bar
-        abortControllerRef.current.signal 
+        (p) => setProgress(p),
+        abortControllerRef.current.signal
       );
 
-      // Now capture ID
       currentFileIdRef.current = result.file_id;
-
-      alert("File uploaded successfully");
+      setStatus("idle");
       setFile(null);
       setProgress(0);
       
@@ -66,35 +102,34 @@ export default function FileUploader({ refreshFiles, folderId = null, profileId 
 
     } catch (error) {
       if (error.name === 'AbortError') {
-        console.log("Upload aborted by user");
+        setStatus("paused");
       } else {
-        console.error("Upload error:", error);
-        alert(error.message || "Upload failed");
+        setStatus("error");
+        setError(error.message);
       }
-    } finally {
-      setLoading(false);
     }
   };
 
   return (
     <div className="file-uploader">
-      {/* ProgressBar Component Integration */}
       <FileProgressBar 
         progress={progress} 
         fileName={file?.name} 
-        isUploading={loading} 
-        error={null}
+        isUploading={status === "uploading"} 
+        isInterrupted={status === "paused"}
+        error={error}
+        onResume={() => handleResume(currentFileIdRef.current, file)}
       />
 
       <input
         type="file"
         onChange={handleFileChange}
-        disabled={loading}
+        disabled={status === "uploading"}
       />
       
-      {!loading ? (
+      {status !== "uploading" ? (
         <button 
-          onClick={handleUpload} 
+          onClick={() => handleUpload()} 
           disabled={!file}
           style={{ marginLeft: '10px' }}
         >
