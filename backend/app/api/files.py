@@ -140,8 +140,29 @@ async def initiate_upload(
     ).scalar_one_or_none()
 
     if existing_file:
-        if existing_file.status == "pending":
-            # erase the current file that is pending
+        if existing_file.status in ["pending", "uploading"]:
+            #  resume logic for both small and multipart
+            presigned_url = None
+
+            # regenerate URL for small uploads (where no multipart ID exists)
+            if not existing_file.upload_id:
+                presigned_url = s3.generate_presigned_url(
+                    "put_object",
+                    Params={
+                        "Bucket": BUCKET_NAME,
+                        "Key": existing_file.s3_key,
+                        "ContentType": existing_file.mime_type
+                    },
+                    ExpiresIn=PRESIGNED_URL_EXPIRY
+                )
+
+            return InitiateUploadResponse(
+                file_id=existing_file.id,
+                upload_id=existing_file.upload_id,
+                presigned_url=presigned_url
+            )
+        elif existing_file.status == "cancelled":
+            # safe to delete cancelled uploads
             db.delete(existing_file)
             db.commit()
         else:
@@ -224,6 +245,15 @@ async def presign_chunk(
     file = db.get(File, payload.file_id)
     if not file or file.owner_id != current_user.id:
         raise HTTPException(status_code=404, detail="File not found")
+    
+    # cancelled uploads
+    if file.status == "cancelled":
+        raise HTTPException(status_code=400, detail="Upload has been cancelled")
+
+    #  mark as uploading
+    file.status = "uploading"
+    file.updated_at = datetime.now(timezone.utc).isoformat()
+    db.commit()
 
     try:
         url = s3.generate_presigned_url(
@@ -239,6 +269,46 @@ async def presign_chunk(
         return {"presigned_url": url}
     except ClientError:
         raise HTTPException(status_code=500, detail="Failed to generate chunk URL")
+    
+# GET upload status for resuming
+@router.get("/{file_id}/upload-status")
+async def get_upload_status(
+    file_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    file = db.scalar(
+        select(File).where(File.id == file_id, File.owner_id == current_user.id)
+    )
+
+    if not file or not file.upload_id:
+        raise HTTPException(status_code=404, detail="Upload session not found")
+
+    if file.status == "cancelled":
+        raise HTTPException(status_code=400, detail="Upload has been cancelled")
+
+    try:
+        response = s3.list_parts(
+            Bucket=BUCKET_NAME,
+            Key=file.s3_key,
+            UploadId=file.upload_id,
+        )
+
+        uploaded_parts = [
+            {
+                "PartNumber": part["PartNumber"],
+                "ETag": part["ETag"]
+            }
+            for part in response.get("Parts", [])
+        ]
+
+        return {
+            "upload_id": file.upload_id,
+            "uploaded_parts": uploaded_parts
+        }
+
+    except ClientError:
+        raise HTTPException(status_code=500, detail="Failed to fetch upload status")
 
 # Finalize the multipart upload by assembling all uploaded chunks in S3
 @router.post("/complete-chunked-upload")
@@ -251,6 +321,10 @@ async def complete_chunked_upload(
     file = db.get(File, payload.file_id)
     if not file or file.owner_id != current_user.id:
         raise HTTPException(status_code=404, detail="File not found")
+    
+     # cancelled uploads
+    if file.status == "cancelled":
+        raise HTTPException(status_code=400, detail="Upload has been cancelled")
 
     try:
         s3.complete_multipart_upload(
@@ -878,8 +952,109 @@ async def cancel_upload(
         except ClientError:
             pass
 
-    # Delete the record completely from DB 
-    db.delete(file)
+    else:
+        #  Handle cleanup for non-multipart (small) uploads
+        try:
+            s3.delete_object(
+                Bucket=BUCKET_NAME,
+                Key=file.s3_key
+            )
+        except ClientError:
+            pass
+
+    # mark as cancelled instead of deleting
+    file.status = "cancelled"
+    file.updated_at = datetime.now(timezone.utc).isoformat()
     db.commit()
 
-    return {"message": "Upload cancelled and record deleted"}
+    return {"message": "Upload cancelled"}
+
+# Resume file during uploading process
+@router.get("/{file_id}/resume-upload")
+async def resume_upload(
+    file_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)]
+):
+    file = db.scalar(
+        select(File).where(
+            File.id == file_id,
+            File.owner_id == current_user.id
+        )
+    )
+
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # If upload already completed
+    if file.status == "completed":
+        return {
+            "status": "completed",
+            "message": "File already uploaded"
+        }
+
+    # If no multipart session exists treat as single upload retry
+    if not file.upload_id:
+        presigned_url = s3.generate_presigned_url(
+            "put_object",
+            Params={
+                "Bucket": BUCKET_NAME,
+                "Key": file.s3_key,
+                "ContentType": file.mime_type
+            },
+            ExpiresIn=PRESIGNED_URL_EXPIRY
+        )
+
+        return {
+            "status": "pending",
+            "type": "single",
+            "file_id": str(file.id),
+            "presigned_url": presigned_url
+        }
+
+    # Multipart resume path
+    try:
+        response = s3.list_parts(
+            Bucket=BUCKET_NAME,
+            Key=file.s3_key,
+            UploadId=file.upload_id
+        )
+
+        uploaded_parts = [
+            {
+                "PartNumber": p["PartNumber"],
+                "ETag": p["ETag"]
+            }
+            for p in response.get("Parts", [])
+        ]
+
+        return {
+            "status": file.status,
+            "type": "multipart",
+            "file_id": str(file.id),
+            "upload_id": file.upload_id,
+            "uploaded_parts": uploaded_parts
+        }
+
+    except ClientError as e:
+        # If multipart session expired in S3 recreate it safely
+        if e.response["Error"]["Code"] == "NoSuchUpload":
+
+            response = s3.create_multipart_upload(
+                Bucket=BUCKET_NAME,
+                Key=file.s3_key,
+                ContentType=file.mime_type
+            )
+
+            file.upload_id = response["UploadId"]
+            file.status = "uploading"
+            db.commit()
+
+            return {
+                "status": "recreated",
+                "type": "multipart",
+                "file_id": str(file.id),
+                "upload_id": file.upload_id,
+                "uploaded_parts": []
+            }
+        raise HTTPException(status_code=500, detail="Failed to resume upload")
