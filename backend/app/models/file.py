@@ -7,9 +7,9 @@ from app.models.user import User
 from app.models.folder import Folder
 from app.models.profile import Profile
 from app.models.tab import Tab
-from app.models.chunk import Chunk
 
 from app.database import Base
+from app.models.upload_chunk import UploadChunk
 
 class File(Base):
     __tablename__ = "files"
@@ -29,6 +29,9 @@ class File(Base):
     created_at: Mapped[str] = mapped_column(String(50))
     updated_at: Mapped[str] = mapped_column(String(50))
     upload_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    total_chunks: Mapped[Optional[int]] = mapped_column(nullable=True)
+    uploaded_chunks: Mapped[int] = mapped_column(default=0)
+    is_upload_complete: Mapped[bool] = mapped_column(default=False)
 
     # Relationships
     owner: Mapped["User"] = relationship(back_populates="files")
@@ -36,3 +39,4 @@ class File(Base):
     profile: Mapped["Profile"] = relationship(back_populates="files")
     tabs: Mapped[list["Tab"]] = relationship(back_populates="file", cascade="all, delete-orphan")
     chunks: Mapped[list["Chunk"]] = relationship(back_populates="file", cascade="all, delete-orphan")
+    upload_chunks: Mapped[list["UploadChunk"]] = relationship( back_populates="file",cascade="all, delete-orphan")
