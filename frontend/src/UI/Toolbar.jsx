@@ -15,7 +15,6 @@ import {
   AlignRight,
   List,
   ListOrdered,
-  Image,
   Link,
   ChevronDown,
   ChevronRight,
@@ -26,7 +25,7 @@ import {
 } from "lucide-react";
 
 // CSS to hide the up/down arrows (spinners) in the font size input
-// PLUS: Fixes for the list visibility (bullets and numbers)
+// Fixes for the list visibility (bullets and numbers)
 const editorStylesCSS = `
   input::-webkit-outer-spin-button,
   input::-webkit-inner-spin-button {
@@ -564,7 +563,6 @@ const Toolbar = ({ editorRef, fileId }) => {
       <Divider />
 
       <button style={btnStyle} title="Insert Link" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} onMouseDown={(e) => { e.preventDefault(); const url = prompt("Enter Link URL:"); if (url) applyCommand("createLink", url); }}><Link size={18} /></button>
-      <button style={btnStyle} title="Insert Image" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} onMouseDown={(e) => { e.preventDefault(); const url = prompt("Enter Image URL:"); if (url) applyCommand("insertImage", url); }}><Image size={18} /></button>
 
       <Divider />
 
