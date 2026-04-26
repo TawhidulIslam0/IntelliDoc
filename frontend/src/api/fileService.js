@@ -44,12 +44,30 @@ const validateFile = (file) => {
   }
 };
 
+// Get status of an existing upload (to check for uploaded parts)
+export const getResumeUploadStatus = async (fileId) => {
+  const token = localStorage.getItem("token");
+  const response = await fetch(`${API_URL}/files/${fileId}/resume-upload`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({ detail: "Failed to resume" }));
+    throw new Error(errData.detail || "Failed to fetch resume status");
+  }
+  
+  return response.json();
+};
+
 // Extract initiation logic to get ID immediately for cancellation handling
 export const initiateUpload = async (file, profileId, folderId = null) => {
   const token = localStorage.getItem("token");
   const actualProfileId = profileId || localStorage.getItem("currentProfileId");
   
   if (!actualProfileId) throw new Error("No profile selected");
+
+  // Calculate total chunks for the backend
+  const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
 
   const response = await fetch(`${API_URL}/files/initiate-upload`, {
     method: "POST",
@@ -63,6 +81,7 @@ export const initiateUpload = async (file, profileId, folderId = null) => {
       mime_type: file.type,
       folder_id: folderId || null,
       profile_id: actualProfileId,
+      total_chunks: totalChunks,
     }),
   });
 
@@ -84,10 +103,17 @@ export const uploadFile = async (file, profileId, folderId = null, progressCallb
 
   if (upload_id) {
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-    const completedParts = [];
+    // Initialize with existing parts if available for resumption, otherwise empty
+    const completedParts = initData?.uploaded_parts ? [...initData.uploaded_parts] : [];
 
     for (let i = 0; i < totalChunks; i++) {
       const partNumber = i + 1;
+      
+      // Skip if this part is already uploaded 
+      if (completedParts.some(p => p.PartNumber === partNumber)) {
+        continue;
+      }
+
       const start = i * CHUNK_SIZE;
       const end = Math.min(start + CHUNK_SIZE, file.size);
       const chunk = file.slice(start, end);
@@ -109,6 +135,19 @@ export const uploadFile = async (file, profileId, folderId = null, progressCallb
       const { presigned_url: chunkUrl } = await chunkUrlResp.json();
       const s3Resp = await fetch(chunkUrl, { method: "PUT", body: chunk, signal });
       if (!s3Resp.ok) throw new Error(`Chunk ${partNumber} upload failed`);
+
+      // Mark chunk as uploaded in DB
+      try {
+        await fetch(`${API_URL}/files/${file_id}/mark-chunk-uploaded`, {
+          method: "POST",
+          headers: { 
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json"
+          }
+        });
+      } catch (err) {
+        console.warn("Failed to mark chunk as uploaded, but upload continued", err);
+      }
 
       const etag = s3Resp.headers.get("ETag");
       completedParts.push({ ETag: etag, PartNumber: partNumber });
@@ -157,7 +196,7 @@ export const uploadFile = async (file, profileId, folderId = null, progressCallb
   return { file_id };
 };
 
-// Preview
+// Preview file
 export const getPreviewUrl = async (fileId, profileId) => {
   const token = localStorage.getItem("token");
   if (!profileId) profileId = localStorage.getItem("currentProfileId");
@@ -168,7 +207,7 @@ export const getPreviewUrl = async (fileId, profileId) => {
   return response.json();
 };
 
-// Download
+// Download file
 export const getDownloadUrl = async (fileId, profileId) => {
   const token = localStorage.getItem("token");
   if (!profileId) profileId = localStorage.getItem("currentProfileId");
@@ -262,6 +301,7 @@ export const updateFileContent = async (fileId, content, tabId = null) => {
   return response.json();
 };
 
+// Move files
 export const moveFile = async (fileId, folderId = null, profileId) => {
   const token = localStorage.getItem("token");
   if (!profileId) profileId = localStorage.getItem("currentProfileId");
@@ -315,6 +355,7 @@ export const duplicateTab = async (fileId, tabId) => {
   return response.json();
 };
 
+// Update tab
 export const updateTab = async (tabId, updateData) => {
   const token = localStorage.getItem("token");
   const response = await fetch(`${API_URL}/tabs/${tabId}`, {
