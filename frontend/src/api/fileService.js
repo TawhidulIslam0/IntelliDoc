@@ -106,6 +106,12 @@ export const uploadFile = async (file, profileId, folderId = null, progressCallb
     // Initialize with existing parts if available for resumption, otherwise empty
     const completedParts = initData?.uploaded_parts ? [...initData.uploaded_parts] : [];
 
+    // Set initial progress immediately before starting the loop
+   let lastProgress = 0;
+    if (progressCallback) {
+    lastProgress = Math.max(lastProgress, Math.round((completedParts.length / totalChunks) * 100));
+    progressCallback(lastProgress);
+    }
     for (let i = 0; i < totalChunks; i++) {
       const partNumber = i + 1;
       
@@ -136,24 +142,14 @@ export const uploadFile = async (file, profileId, folderId = null, progressCallb
       const s3Resp = await fetch(chunkUrl, { method: "PUT", body: chunk, signal });
       if (!s3Resp.ok) throw new Error(`Chunk ${partNumber} upload failed`);
 
-      // Mark chunk as uploaded in DB
-      try {
-        await fetch(`${API_URL}/files/${file_id}/mark-chunk-uploaded`, {
-          method: "POST",
-          headers: { 
-            "Authorization": `Bearer ${token}`,
-            "Content-Type": "application/json"
-          }
-        });
-      } catch (err) {
-        console.warn("Failed to mark chunk as uploaded, but upload continued", err);
-      }
-
       const etag = s3Resp.headers.get("ETag");
       completedParts.push({ ETag: etag, PartNumber: partNumber });
 
+      // Track progress based on actual completed parts
       if (progressCallback) {
-        progressCallback(Math.round(((i + 1) / totalChunks) * 100));
+        const newProgress = Math.round((completedParts.length / totalChunks) * 100);
+        lastProgress = Math.max(lastProgress, newProgress);
+        progressCallback(lastProgress);
       }
     }
 
@@ -395,4 +391,23 @@ export const cancelFileUpload = async (fileId) => {
   }
   
   return response.json();
+};
+
+// Updated resumeUpload to include folderId for context persistence
+export const resumeUpload = async (fileId, file, profileId, folderId, progressCallback, signal) => {
+  //  Fetch the status to see which parts were already uploaded
+  const statusData = await getResumeUploadStatus(fileId);
+  //  Pass the status data into uploadFile
+  return await uploadFile(
+    file, 
+    profileId, 
+    folderId, 
+    progressCallback, 
+    signal, 
+    {
+      file_id: fileId,
+      upload_id: statusData.upload_id,
+      uploaded_parts: statusData.uploaded_parts || []
+    }
+  );
 };
