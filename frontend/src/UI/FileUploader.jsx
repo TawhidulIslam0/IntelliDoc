@@ -12,6 +12,9 @@ export default function FileUploader({ refreshFiles, folderId = null, profileId 
   const abortControllerRef = useRef(null);
   const currentFileIdRef = useRef(null);
 
+  // store resume metadata so progress doesn't reset
+  const resumeDataRef = useRef(null);
+
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);
     setProgress(0);
@@ -40,30 +43,37 @@ export default function FileUploader({ refreshFiles, folderId = null, profileId 
     if (fileInput) fileInput.value = "";
   };
 
-  const handleResume = async (fileId, fileObj) => {
-    if (!fileObj) return;
+  //  
+  const handleResume = async () => {
+    if (!currentFileIdRef.current || !file) return;
 
     abortControllerRef.current = new AbortController();
     setStatus("uploading");
     setError(null);
-    currentFileIdRef.current = fileId;
 
     try {
-      const resumeData = await getResumeUploadStatus(fileId);
-      
+      const resumeData =
+        resumeDataRef.current ||
+        await getResumeUploadStatus(currentFileIdRef.current);
+
       await uploadFile(
-        fileObj,
+        file,
         profileId,
         folderId,
         (p) => setProgress(p),
         abortControllerRef.current.signal,
-        resumeData 
+        {
+          file_id: currentFileIdRef.current,
+          upload_id: resumeData.upload_id,
+          uploaded_parts: resumeData.uploaded_parts || []
+        }
       );
 
       setStatus("idle");
       setFile(null);
       setProgress(0);
       refreshFiles();
+
     } catch (error) {
       if (error.name === 'AbortError') {
         setStatus("paused");
@@ -92,6 +102,10 @@ export default function FileUploader({ refreshFiles, folderId = null, profileId 
       );
 
       currentFileIdRef.current = result.file_id;
+
+      // store resume state immediately after upload starts
+      resumeDataRef.current = await getResumeUploadStatus(result.file_id);
+
       setStatus("idle");
       setFile(null);
       setProgress(0);
@@ -118,7 +132,7 @@ export default function FileUploader({ refreshFiles, folderId = null, profileId 
         isUploading={status === "uploading"} 
         isInterrupted={status === "paused"}
         error={error}
-        onResume={() => handleResume(currentFileIdRef.current, file)}
+        onResume={handleResume}
       />
 
       <input
