@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars */
 /* eslint-disable no-undef */
-import React, { useEffect, useState, useContext, useCallback } from "react";
+import React, { useEffect, useState, useContext, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams, useLocation } from "react-router-dom"; // Added useLocation
 import { uploadFile, getPreviewUrl, deleteFile, createBlankDoc, renameFile, moveFile, cancelFileUpload } from "../api/fileService"; 
 import { getFolders, createFolder, deleteFolder, renameFolder, downloadFolder } from "../api/folderService";
@@ -161,6 +161,7 @@ const DashBoard = ({ setDocuments }) => {
   const [user, setUser] = useState(null);
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [isPaused, setIsPaused] = useState(false); // Track Pause State
   const [fetchedDocuments, setFetchedDocuments] = useState([]);
   const [folders, setFolders] = useState([]);
   const [folderStack, setFolderStack] = useState([]);
@@ -173,6 +174,9 @@ const DashBoard = ({ setDocuments }) => {
 
   // New state to manage upload cancellation
   const [uploadController, setUploadController] = useState(null);
+  
+  // Flag to handle pause/resume vs cancel logic
+  const isPausingRef = useRef(false);
 
   // New state for handling upload progress tracking
   const [uploadInfo, setUploadInfo] = useState({
@@ -424,13 +428,13 @@ const DashBoard = ({ setDocuments }) => {
     }
   };
 
-  // File selection with increased limit (100MB)
+  // File selection 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (!selectedFile) return;
-    const allowedTypes = ["text/plain", "application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "image/png", "image/jpeg"];
+    const allowedTypes = ["text/plain", "application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
     if (!allowedTypes.includes(selectedFile.type)) {
-      alert("Only TXT, PDF, Word, and Images allowed.");
+      alert("Only TXT, PDF, and Word files are allowed.");
       return;
     }
     
@@ -442,9 +446,26 @@ const DashBoard = ({ setDocuments }) => {
     setFile(selectedFile);
   };
 
+  // Pause Upload
+  const handlePauseUpload = () => {
+    if (uploadController) {
+      isPausingRef.current = true; // Mark BEFORE abort
+      uploadController.abort();
+      setIsPaused(true);
+      setUploading(false);
+    }
+  };
+
+  // Resume Upload (Triggers logic to continue from last point)
+  const handleResumeUpload = () => {
+    setIsPaused(false);
+    handleUpload(true); // Call with true to indicate resumption
+  };
+
   // Cancel upload
   const handleCancelUpload = async () => {
     if (uploadController) {
+      // isPausingRef.current remains false, so catch block resets state
       uploadController.abort();
       
       // If we have an active file ID, notify the server to cleanup
@@ -457,6 +478,7 @@ const DashBoard = ({ setDocuments }) => {
       }
     }
     setUploading(false);
+    setIsPaused(false);
     setFile(null);
     setActiveFileId(null);
     // Reset state to null/default to hide the bar
@@ -468,14 +490,17 @@ const DashBoard = ({ setDocuments }) => {
   };
 
   // Upload file
-  const handleUpload = async () => {
+  const handleUpload = async (isResuming = false) => {
     if (!file) return alert("Please select a file first.");
 
-    // Duplicate check
-    const isDuplicate = fetchedDocuments.some(doc => doc.name === file.name);
-    if (isDuplicate) {
-      alert("A file with this name already exists in this location.");
-      return;
+    // Only check for duplicates if we aren't resuming an active upload
+    const isActuallyResuming = isResuming || !!activeFileId;
+    if (!isActuallyResuming) {
+        const isDuplicate = fetchedDocuments.some(doc => doc.name === file.name);
+        if (isDuplicate) {
+          alert("A file with this name already exists in this location.");
+          return;
+        }
     }
     
     // Create new AbortController for this request
@@ -484,13 +509,15 @@ const DashBoard = ({ setDocuments }) => {
 
     try {
       setUploading(true);
-      // Initialize the progress bar state
-      setUploadInfo({ 
-        progress: 0, 
-        fileName: file.name, 
-        isUploading: true, 
-        error: null 
-      });
+      
+      // Keep progress if we are resuming, otherwise reset to 0
+      setUploadInfo(prev => ({ 
+          ...prev, 
+          isUploading: true, 
+          error: null,
+          progress: isResuming ? prev.progress : 0,
+          fileName: file.name
+      }));
 
       // Passing the callback to the uploadFile API to update the state
       const result = await uploadFile(
@@ -498,9 +525,12 @@ const DashBoard = ({ setDocuments }) => {
         currentProfile.id, 
         currentFolderId, 
         (percent) => {
+          // FIX: Ignore initial 0% update if we are resuming to prevent UI flicker
+          if (isResuming && percent === 0) return;
           setUploadInfo(prev => ({ ...prev, progress: percent }));
         },
-        controller.signal
+        controller.signal,
+        activeFileId // Pass activeFileId if exists for partial uploads
       );
       
       // Track file ID if returned for cancellation support
@@ -511,6 +541,7 @@ const DashBoard = ({ setDocuments }) => {
       alert("File uploaded successfully");
       setFile(null);
       setActiveFileId(null);
+      setIsPaused(false);
       
       // Clear input
       const input = document.getElementById("fileUploadInput");
@@ -519,21 +550,29 @@ const DashBoard = ({ setDocuments }) => {
       await fetchFiles(currentFolderId);
     } catch (err) {
       if (err.name === 'AbortError') {
-        console.log("Upload aborted by user");
-        // Reset the UI state immediately so the bar vanishes
-        setUploadInfo({ progress: 0, fileName: '', isUploading: false, error: null });
+        console.log("Upload paused or aborted");
+        
+        if (isPausingRef.current) {
+            //  Keep progress, just reset the ref
+            isPausingRef.current = false;
+        } else {
+            //  reset state
+            setUploadInfo({ progress: 0, fileName: '', isUploading: false, error: null });
+        }
       } else {
         console.error(err);
         setUploadInfo(prev => ({ ...prev, error: err.message, isUploading: false }));
         alert("File upload failed: " + err.message);
       }
     } finally {
-      setUploading(false);
-      setUploadController(null);
-      // Wait briefly so user sees the 100% completion before hiding the bar
-      setTimeout(() => {
-        setUploadInfo(prev => ({ ...prev, isUploading: false }));
-      }, 1500);
+      if (!isPaused) {
+          setUploading(false);
+          setUploadController(null);
+          // Wait briefly so user sees the 100% completion before hiding the bar
+          setTimeout(() => {
+            setUploadInfo(prev => ({ ...prev, isUploading: false }));
+          }, 1500);
+      }
     }
   };
 
@@ -750,6 +789,10 @@ const DashBoard = ({ setDocuments }) => {
             fileName={uploadInfo.fileName}
             isUploading={uploadInfo.isUploading}
             error={uploadInfo.error}
+            isInterrupted={isPaused}
+            onResume={handleResumeUpload}
+            onComplete={() => setUploadInfo(prev => ({...prev, isUploading: false}))}
+            onDismiss={() => setUploadInfo(prev => ({...prev, error: null}))}
           />
 
           {uploadedFiles.length === 0 ? (
@@ -777,13 +820,23 @@ const DashBoard = ({ setDocuments }) => {
       {file && (
         <div style={{ position: "fixed", bottom: 190, right: 30, display: "flex", gap: "10px", zIndex: 1000 }}>
           {uploading && (
-             <button onClick={handleCancelUpload} style={{ padding: "10px 20px", backgroundColor: "#d93025", color: "white", border: "none", borderRadius: 6, cursor: "pointer" }}>
-               Cancel
+             <button onClick={handlePauseUpload} style={{ padding: "10px 20px", backgroundColor: "#f9ab00", color: "white", border: "none", borderRadius: 6, cursor: "pointer" }}>
+               Pause
              </button>
           )}
-          <button onClick={handleUpload} disabled={uploading} style={{ padding: "10px 20px", backgroundColor: "#4285f4", color: "white", border: "none", borderRadius: 6, cursor: "pointer" }}>
-            {uploading ? "Uploading..." : `Upload ${file.name}`}
+          {isPaused && (
+             <button onClick={handleResumeUpload} style={{ padding: "10px 20px", backgroundColor: "#34a853", color: "white", border: "none", borderRadius: 6, cursor: "pointer" }}>
+               Resume
+             </button>
+          )}
+          <button onClick={handleCancelUpload} style={{ padding: "10px 20px", backgroundColor: "#d93025", color: "white", border: "none", borderRadius: 6, cursor: "pointer" }}>
+            Cancel
           </button>
+          {!uploading && !isPaused && (
+            <button onClick={() => handleUpload()} style={{ padding: "10px 20px", backgroundColor: "#4285f4", color: "white", border: "none", borderRadius: 6, cursor: "pointer" }}>
+                Upload {file.name}
+            </button>
+          )}
         </div>
       )}
 
