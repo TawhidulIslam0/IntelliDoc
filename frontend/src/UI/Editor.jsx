@@ -7,6 +7,7 @@ const PAGE_HEIGHT = 1056;
 const PAGE_WIDTH = 816;
 const GAP_SIZE = 24;
 const PADDING = 96; 
+const OVERFLOW_BUFFER = 5; 
 
 const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTabId, tabs, onContentChange }, ref) => {
   const containerRef = useRef(null);
@@ -86,16 +87,17 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
       }
     }, 1500);
   };
+
   // Logic to move extra lines between pages to maintain document flow
   const handleLayout = (el) => {
     const parentPage = el.parentElement;
     if (!parentPage) return;
 
-    if (el.scrollHeight > PAGE_HEIGHT) {
+    if (el.scrollHeight > PAGE_HEIGHT + OVERFLOW_BUFFER) { 
       let nextPage = parentPage.nextSibling;
       let nextEditable = !nextPage ? createPage() : nextPage.querySelector("[contentEditable]");
 
-      while (el.scrollHeight > PAGE_HEIGHT && el.childNodes.length > 0) {
+      while (el.scrollHeight > PAGE_HEIGHT + OVERFLOW_BUFFER && el.childNodes.length > 0) {
         nextEditable.prepend(el.lastChild);
       }
 
@@ -119,7 +121,7 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
         while (nextEditable.childNodes.length > 0) {
           const firstChild = nextEditable.firstChild;
           el.appendChild(firstChild);
-          if (el.scrollHeight > PAGE_HEIGHT) {
+          if (el.scrollHeight > PAGE_HEIGHT + OVERFLOW_BUFFER) {
             nextEditable.prepend(firstChild);
             break;
           }
@@ -133,57 +135,64 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
       }
     }
   };
+
   // Manages keyboard interactions like jumping pages on backspace
   const handleKeyDown = (el, e) => {
-    if (e.key === "Enter") {
-      setTimeout(() => {
-        handleLayout(el);
-      }, 5); 
-    }
+  if (e.key === "Enter") {
+  return;
+}
 
     if (e.key === "Backspace") {
       const selection = window.getSelection();
       if (!selection.rangeCount || !selection.isCollapsed) return;
+
       const range = selection.getRangeAt(0);
-     // cursor at the  start of the page content
-      const preCursorRange = range.cloneRange();
-      preCursorRange.selectNodeContents(el);
-      preCursorRange.setEnd(range.startContainer, range.startOffset);
-      
-      const isAtStart = preCursorRange.toString().length === 0;
-      const isPageEmpty = el.innerText.trim() === "";
 
-      if (isAtStart || isPageEmpty) {
-        const parentPage = el.parentElement;
-        const prevPage = parentPage.previousSibling;
+      const parentPage = el.parentElement;
+      const prevPage = parentPage.previousSibling;
+      if (!prevPage) return;
 
-        if (prevPage) {
-          e.preventDefault(); 
-          
-          const prevEditable = prevPage.querySelector("[contentEditable]");
-          const currentNodes = Array.from(el.childNodes);
+      if (range.startOffset !== 0) return;
 
-          prevEditable.focus();
-          const newRange = document.createRange();
-          newRange.selectNodeContents(prevEditable);
-          newRange.collapse(false);
-          selection.removeAllRanges();
-          selection.addRange(newRange);
-
-          requestAnimationFrame(() => {
-            currentNodes.forEach(node => {
-              if (!(node.innerHTML === "<br>" && prevEditable.innerText.trim() !== "")) {
-                prevEditable.appendChild(node);
-              }
-            });
-
-            parentPage.remove();
-            handleLayout(prevEditable);
-            updatePageNumbers();
-            triggerAutoSave();
-          });
-        }
+      let node = range.startContainer;
+      while (node && node.parentNode !== el) {
+        node = node.parentNode;
       }
+
+      const isFirstBlock = node === el.firstChild;
+      if (!isFirstBlock) return;
+
+      const preRange = range.cloneRange();
+      preRange.selectNodeContents(node);
+      preRange.setEnd(range.startContainer, range.startOffset);
+
+      if (preRange.toString().length !== 0) return;
+
+      e.preventDefault();
+
+      const prevEditable = prevPage.querySelector("[contentEditable]");
+
+      prevEditable.focus();
+      const newRange = document.createRange();
+      newRange.selectNodeContents(prevEditable);
+      newRange.collapse(false);
+
+      selection.removeAllRanges();
+      selection.addRange(newRange);
+
+      requestAnimationFrame(() => {
+        if (el.innerText.trim() !== "") {
+          while (el.firstChild) {
+            prevEditable.appendChild(el.firstChild);
+          }
+        }
+
+        parentPage.remove();
+
+        handleLayout(prevEditable);
+        updatePageNumbers();
+        triggerAutoSave();
+      });
     }
   };
 
@@ -220,6 +229,7 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
     const labels = containerRef.current?.querySelectorAll(".page-number-label") || [];
     labels.forEach((label, i) => { label.innerText = i + 1; });
   };
+
   // Content Loading & Syncing from Tabs
   useEffect(() => {
     if (!containerRef.current || !activeTabId || !tabs) return;
