@@ -48,8 +48,8 @@ export const getFiles = async (profileId, folderId = null, search = "") => {
 // Type + Size Validation
 const validateFile = (file) => {
   const name = file.name.toLowerCase();
-  if (!(name.endsWith(".txt") || name.endsWith(".pdf") || name.endsWith(".idoc"))) {
-    throw new Error("Only TXT, PDF, and IDOC files are allowed");
+  if (!(name.endsWith(".txt") || name.endsWith(".pdf") || name.endsWith(".docx"))) {
+    throw new Error("Only TXT, PDF, and DOCX files are allowed");
   }
   if (file.size > MAX_FILE_SIZE) {
     throw new Error(`File size ${file.size} exceeds the maximum allowed limit of 100MB.`);
@@ -409,7 +409,7 @@ export const cancelFileUpload = async (fileId) => {
   return response.json();
 };
 
-// Updated resumeUpload to include folderId for context persistence
+// Resume Upload file
 export const resumeUpload = async (fileId, file, profileId, folderId, progressCallback, signal) => {
   //  Fetch the status to see which parts were already uploaded
   const statusData = await getResumeUploadStatus(fileId);
