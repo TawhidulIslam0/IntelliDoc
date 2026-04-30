@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useImperativeHandle, forwardRef, useState } from "react";
 import { renameFile } from "../api/fileService"; 
 
+// Page dimension constants for A4-style layout
 const PAGE_HEIGHT = 1056; 
 const PAGE_WIDTH = 816;
 const GAP_SIZE = 24;
@@ -17,6 +18,7 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
   const docId = doc?.id || doc?.file_id;
   const [isVisible, setIsVisible] = useState(false);
 
+  // Expose methods to parent components for file actions and formatting
   useImperativeHandle(ref, () => ({
     handleRename: async (newName) => {
       if (!docId) return;
@@ -39,13 +41,14 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
     }
   }));
 
+  // Clean up timers and sync content when the editor unmounts
   useEffect(() => {
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
       if (onContentChange) onContentChange(getLiveContent());
     };
   }, []);
-
+  
   // Helper to get current text/HTML from the DOM for saving
   const getLiveContent = () => {
     if (!containerRef.current) return { pages: [""] };
@@ -54,9 +57,11 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
     return { pages };
   };
 
+  // Autosave logic to persist changes to the server
   const triggerAutoSave = () => {
     setSaveStatus("saving");
     const contentObj = getLiveContent();
+
     // Tell the parent (App.jsx) exactly what is on screen right now
     if (onContentChange) onContentChange(contentObj);
 
@@ -97,18 +102,35 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
       let nextPage = parentPage.nextSibling;
       let nextEditable = !nextPage ? createPage() : nextPage.querySelector("[contentEditable]");
 
-      while (el.scrollHeight > PAGE_HEIGHT + OVERFLOW_BUFFER && el.childNodes.length > 0) {
-        nextEditable.prepend(el.lastChild);
+      const selection = window.getSelection();
+      let cursorNode = null;
+
+      if (selection.rangeCount > 0) {
+        cursorNode = selection.getRangeAt(0).startContainer;
       }
 
-      const selection = window.getSelection();
-      if (document.activeElement === el && selection.rangeCount > 0) {
-        nextEditable.focus();
-        const range = document.createRange();
-        range.setStart(nextEditable, 0);
-        range.collapse(true);
-        selection.removeAllRanges();
-        selection.addRange(range);
+      while (el.scrollHeight > PAGE_HEIGHT + OVERFLOW_BUFFER && el.childNodes.length > 0) {
+        const movedNode = el.lastChild;
+
+        const shouldMoveCursor =
+          cursorNode && (movedNode === cursorNode || movedNode.contains(cursorNode));
+
+        nextEditable.prepend(movedNode);
+
+        if (shouldMoveCursor) {
+          nextEditable.focus();
+          const newRange = document.createRange();
+
+          if (movedNode.firstChild) {
+            newRange.setStart(movedNode.firstChild, 0);
+          } else {
+            newRange.setStart(movedNode, 0);
+          }
+
+          newRange.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(newRange);
+        }
       }
 
       handleLayout(nextEditable);
@@ -138,16 +160,13 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
 
   // Manages keyboard interactions like jumping pages on backspace
   const handleKeyDown = (el, e) => {
-  if (e.key === "Enter") {
-  return;
-}
+    if (e.key === "Enter") return;
 
     if (e.key === "Backspace") {
       const selection = window.getSelection();
       if (!selection.rangeCount || !selection.isCollapsed) return;
 
       const range = selection.getRangeAt(0);
-
       const parentPage = el.parentElement;
       const prevPage = parentPage.previousSibling;
       if (!prevPage) return;
@@ -196,8 +215,10 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
     }
   };
 
+  // Dynamically creates a new page DOM structure and adds event listeners
   const createPage = (initialContent = "", index) => {
     if (!containerRef.current) return;
+
     const page = document.createElement("div");
     page.className = "editor-page";
     page.style.cssText = `width: ${PAGE_WIDTH}px; height: ${PAGE_HEIGHT}px; background-color: white; box-shadow: 0 1px 3px rgba(60,64,67,0.15); border: 1px solid #dadce0; position: relative; margin-bottom: ${GAP_SIZE}px; flex-shrink: 0; overflow: hidden;`;
@@ -225,6 +246,7 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
     return editable;
   };
 
+  // Re-calculates and displays page numbers for all existing pages
   const updatePageNumbers = () => {
     const labels = containerRef.current?.querySelectorAll(".page-number-label") || [];
     labels.forEach((label, i) => { label.innerText = i + 1; });
