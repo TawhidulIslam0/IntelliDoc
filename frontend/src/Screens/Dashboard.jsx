@@ -105,7 +105,8 @@ const FileItem = ({ doc, onOpenDoc, onOpenMenu, isRecentDoc, onDragStart }) => {
           <span style={{ fontSize: 16, fontWeight: 600, color: isHovered ? "#4285f4" : "#202124" }}>
             {isRecentDoc ? "DOC" : 
               doc.mime_type === "application/pdf" ? "PDF" : 
-              doc.mime_type === "text/plain" ? "TXT" : "FILE"}
+              doc.mime_type === "text/plain" ? "TXT" : 
+              doc.mime_type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ? "DOCX" : "FILE"}
           </span>
         </div>
 
@@ -432,7 +433,15 @@ const DashBoard = ({ setDocuments }) => {
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (!selectedFile) return;
-    const allowedTypes = ["text/plain", "application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
+    
+    // Updated allowedTypes to include Word .docx
+    const allowedTypes = [
+      "text/plain", 
+      "application/pdf", 
+      "application/msword", 
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    ];
+    
     if (!allowedTypes.includes(selectedFile.type)) {
       alert("Only TXT, PDF, and Word files are allowed.");
       return;
@@ -449,7 +458,7 @@ const DashBoard = ({ setDocuments }) => {
   // Pause Upload
   const handlePauseUpload = () => {
     if (uploadController) {
-      isPausingRef.current = true; // Mark BEFORE abort
+      isPausingRef.current = true;
       uploadController.abort();
       setIsPaused(true);
       setUploading(false);
@@ -525,7 +534,7 @@ const DashBoard = ({ setDocuments }) => {
         currentProfile.id, 
         currentFolderId, 
         (percent) => {
-          // FIX: Ignore initial 0% update if we are resuming to prevent UI flicker
+          // Ignore initial 0% update if we are resuming to prevent UI flicker
           if (isResuming && percent === 0) return;
           setUploadInfo(prev => ({ ...prev, progress: percent }));
         },
@@ -811,7 +820,7 @@ const DashBoard = ({ setDocuments }) => {
       </div>
 
       {/* Hidden file input */}
-      <input type="file" id="fileUploadInput" style={{ display: "none" }} onChange={handleFileChange} />
+      <input type="file" id="fileUploadInput" style={{ display: "none" }} onChange={handleFileChange} accept=".txt,.pdf,.docx" />
 
       {/* UI Buttons */}
       <img src={folderIcon} alt="Create Folder" onClick={handleCreateFolder} style={{ position: "fixed", bottom: 110, right: 30, width: 60, height: 60, cursor: "pointer", zIndex: 1000 }} />
