@@ -3,6 +3,18 @@ const API_URL = "http://localhost:8000/api";
 const CHUNK_SIZE = 10 * 1024 * 1024; 
 // Increased max limit to be 100MB(102,400kb)
 const MAX_FILE_SIZE = 100 * 1024 * 1024; 
+// Map to track upload progress by file ID 
+const uploadProgressByFile = new Map();
+
+const reportProgress = (fileId, nextProgress, progressCallback) => {
+  if (!progressCallback) return;
+
+  const previousProgress = uploadProgressByFile.get(fileId) || 0;
+  const safeProgress = Math.max(previousProgress, nextProgress);
+
+  uploadProgressByFile.set(fileId, safeProgress);
+  progressCallback(safeProgress);
+};
 
 // Fetch list of files for the current user 
 export const getFiles = async (profileId, folderId = null, search = "") => {
@@ -107,10 +119,10 @@ export const uploadFile = async (file, profileId, folderId = null, progressCallb
     const completedParts = initData?.uploaded_parts ? [...initData.uploaded_parts] : [];
 
     // Set initial progress immediately before starting the loop
-   let lastProgress = 0;
+    let lastProgress = 0;
     if (progressCallback) {
-    lastProgress = Math.max(lastProgress, Math.round((completedParts.length / totalChunks) * 100));
-    progressCallback(lastProgress);
+      lastProgress = Math.max(lastProgress, Math.round((completedParts.length / totalChunks) * 100));
+      reportProgress(file_id, lastProgress, progressCallback);
     }
     for (let i = 0; i < totalChunks; i++) {
       const partNumber = i + 1;
@@ -149,7 +161,7 @@ export const uploadFile = async (file, profileId, folderId = null, progressCallb
       if (progressCallback) {
         const newProgress = Math.round((completedParts.length / totalChunks) * 100);
         lastProgress = Math.max(lastProgress, newProgress);
-        progressCallback(lastProgress);
+        reportProgress(file_id, lastProgress, progressCallback);
       }
     }
 
@@ -168,6 +180,9 @@ export const uploadFile = async (file, profileId, folderId = null, progressCallb
     });
 
     if (!completeResp.ok) throw new Error("Failed to finalize chunked upload");
+
+    reportProgress(file_id, 100, progressCallback);
+    uploadProgressByFile.delete(file_id);
     
   } else {
     const s3Resp = await fetch(presigned_url, {
@@ -186,7 +201,8 @@ export const uploadFile = async (file, profileId, folderId = null, progressCallb
     });
 
     if (!completeResp.ok) throw new Error("Failed to finalize upload");
-    if (progressCallback) progressCallback(100);
+    reportProgress(file_id, 100, progressCallback);
+    uploadProgressByFile.delete(file_id);
   }
 
   return { file_id };
