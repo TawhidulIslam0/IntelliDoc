@@ -6,6 +6,9 @@ import logo from "../assets/file_icon_logo.png";
 import logoutIcon from "../assets/logout.png";
 import { getFiles, getPreviewUrl } from "../api/fileService";
 import { getFolders } from "../api/folderService";
+import docxIcon from "../assets/docx_icon.png";
+import pdfIcon from "../assets/pdf_icon.png";
+import txtIcon from "../assets/txt_icon.png";
 
 export default function DashboardNavbar({ user }) {
   const navigate = useNavigate();
@@ -93,7 +96,8 @@ export default function DashboardNavbar({ user }) {
     }
 
     const fileName = item.name?.toLowerCase() || "";
-    const isExternalFile = fileName.endsWith(".pdf") || fileName.endsWith(".txt");
+
+    const isExternalFile = fileName.endsWith(".pdf") || fileName.endsWith(".txt") || fileName.endsWith(".docx");
 
     if (isExternalFile) {
       try {
@@ -169,37 +173,20 @@ export default function DashboardNavbar({ user }) {
               {searchQuery.length === 0 ? (
                 <div style={{ padding: "8px 0" }}>
                   <div style={{ padding: "10px 20px", color: "#5F6368", fontSize: "12px", fontWeight: "bold" }}>SEARCH FILTERS</div>
-                  <div 
-                    style={filterItemStyle} 
-                    onClick={() => setSearchQuery("type:document")}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F1F3F4"}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
-                  >
-                    <span style={{ marginRight: "12px" }}>📄</span> Documents
+                  <div style={filterItemStyle} onClick={() => setSearchQuery("type:document")} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F1F3F4"} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}>
+                    <span style={{ marginRight: "12px" }}><img src={logo} alt="doc" style={{ width: "18px", height: "18px" }} /></span> Documents
                   </div>
-                  <div 
-                    style={filterItemStyle} 
-                    onClick={() => setSearchQuery("type:folder")}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F1F3F4"}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
-                  >
+                  <div style={filterItemStyle} onClick={() => setSearchQuery("type:folder")} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F1F3F4"} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}>
                     <span style={{ marginRight: "12px" }}>📁</span> Folders
                   </div>
-                  <div 
-                    style={filterItemStyle} 
-                    onClick={() => setSearchQuery("type:pdf")}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F1F3F4"}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
-                  >
-                    <span style={{ marginRight: "12px" }}>📑</span> PDFs
+                  <div style={filterItemStyle} onClick={() => setSearchQuery("type:pdf")} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F1F3F4"} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}>
+                    <span style={{ marginRight: "12px" }}><img src={pdfIcon} alt="pdf" style={{ width: "18px", height: "18px" }} /></span> PDFs
                   </div>
-                  <div 
-                    style={filterItemStyle} 
-                    onClick={() => setSearchQuery("type:txt")}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F1F3F4"}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
-                  >
-                    <span style={{ marginRight: "12px" }}>📝</span> Text Files
+                  <div style={filterItemStyle} onClick={() => setSearchQuery("type:txt")} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F1F3F4"} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}>
+                    <span style={{ marginRight: "12px" }}><img src={txtIcon} alt="txt" style={{ width: "18px", height: "18px" }} /></span> Text Files
+                  </div>
+                  <div style={filterItemStyle} onClick={() => setSearchQuery("type:docx")} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F1F3F4"} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}>
+                    <span style={{ marginRight: "12px" }}><img src={docxIcon} alt="docx" style={{ width: "18px", height: "18px" }} /></span> Word Documents
                   </div>
                 </div>
               ) : (
@@ -209,27 +196,17 @@ export default function DashboardNavbar({ user }) {
                   ) : (
                     <>
                       {searchResults.folders.map(folder => (
-                        <div 
-                          key={folder.id} 
-                          style={resultItemStyle} 
-                          onClick={() => handleResultClick(folder, 'folder')}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F1F3F4"}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
-                        >
+                        <div key={folder.id} style={resultItemStyle} onClick={() => handleResultClick(folder, 'folder')} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F1F3F4"} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}>
                           <span style={{ marginRight: "12px" }}>📁</span> {folder.name}
                         </div>
                       ))}
                       {searchResults.files.map(file => (
-                        <div 
-                          key={file.id} 
-                          style={resultItemStyle} 
-                          onClick={() => handleResultClick(file, 'file')}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F1F3F4"}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
-                        >
-                          <span style={{ marginRight: "12px" }}>
-                            {file.name.toLowerCase().endsWith('.pdf') ? '📑' :
-                              file.name.toLowerCase().endsWith('.txt') ? '📝' : '📄'}
+                        <div key={file.id} style={resultItemStyle} onClick={() => handleResultClick(file, 'file')} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F1F3F4"} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}>
+                          <span style={{ marginRight: "12px", display: "flex", alignItems: "center", width: "20px" }}>
+                            {file.name.toLowerCase().endsWith('.pdf') ? <img src={pdfIcon} alt="pdf" style={{ width: "20px", height: "20px" }} /> :
+                             file.name.toLowerCase().endsWith('.txt') ? <img src={txtIcon} alt="txt" style={{ width: "20px", height: "20px" }} /> : 
+                             file.name.toLowerCase().endsWith('.docx') ? <img src={docxIcon} alt="docx" style={{ width: "20px", height: "20px" }} /> : 
+                             <img src={logo} alt="doc" style={{ width: "20px", height: "20px" }} />}
                           </span> {file.name.replace(/\.idoc$/, "")}
                         </div>
                       ))}
@@ -267,13 +244,7 @@ export default function DashboardNavbar({ user }) {
                     <div key={type}>
                       <div style={{ padding: "6px 14px", fontSize: "11px", fontWeight: "600", color: "#5F6368", textTransform: "uppercase" }}>{type}</div>
                       {group.map(p => (
-                        <div
-                          key={p.id}
-                          onClick={() => handleSwitchProfile(p)}
-                          style={dropdownItemStyle}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F1F3F4"}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
-                        >
+                        <div key={p.id} onClick={() => handleSwitchProfile(p)} style={dropdownItemStyle} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F1F3F4"} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}>
                           {p.name}
                         </div>
                       ))}
@@ -289,13 +260,8 @@ export default function DashboardNavbar({ user }) {
         <div
           onClick={handleLogout}
           style={{
-            padding: "8px",
-            borderRadius: "50%",
-            cursor: "pointer",
-            transition: "background-color 0.2s",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center"
+            padding: "8px", borderRadius: "50%", cursor: "pointer", transition: "background-color 0.2s",
+            display: "flex", alignItems: "center", justifyContent: "center"
           }}
           onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#E8EAED"}
           onMouseOut={(e) => e.currentTarget.style.backgroundColor = "transparent"}
