@@ -502,6 +502,8 @@ async def list_files(
                 stmt = stmt.where(File.name.ilike("%.pdf"))
             elif file_type == "txt":
                 stmt = stmt.where(File.name.ilike("%.txt"))
+            elif file_type == "docx":
+                stmt = stmt.where(File.name.ilike("%.docx"))
         else:
             # Global Name Search: Find matches anywhere in the profile
             stmt = stmt.where(File.name.ilike(f"%{search_query}%"))
