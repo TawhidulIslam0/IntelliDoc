@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import UUID
@@ -22,8 +23,9 @@ from sqlalchemy.orm import Session
 
 from app.models.file import File
 from app.models.chunk import Chunk as ChunkModel
+from app.models.tab import Tab
 from app.services.embedder import Embedder
-from app.services.text_extractor import extract, clean
+from app.services.text_extractor import extract, clean, _html_to_text
 from app.services.chunker import chunk_text
 
 
@@ -96,10 +98,9 @@ class Indexer:
             db.commit()
             db.refresh(file)
 
-            raw_text = self._extract_text_from_s3(file)
-            cleaned_text = clean(raw_text)
+            indexed_chunks = self._build_chunks(db, file)
 
-            if not cleaned_text.strip():
+            if not indexed_chunks:
                 db.execute(delete(ChunkModel).where(ChunkModel.file_id == file.id))
                 file.status = self.failed_status
                 file.updated_at = self._now()
@@ -113,31 +114,11 @@ class Indexer:
                     error="No extractable text found",
                 )
 
-            chunks = chunk_text(
-                cleaned_text,
-                chunk_size=self.chunk_size,
-                chunk_overlap=self.chunk_overlap,
-            )
+            vectors = self.embedder.encode_documents([item["chunk"].text for item in indexed_chunks])
 
-            if not chunks:
-                db.execute(delete(ChunkModel).where(ChunkModel.file_id == file.id))
-                file.status = self.failed_status
-                file.updated_at = self._now()
-                db.commit()
-
-                return IndexingResult(
-                    file_id=file.id,
-                    status=self.failed_status,
-                    num_chunks=0,
-                    extracted_chars=len(cleaned_text),
-                    error="Chunking produced no chunks",
-                )
-
-            vectors = self.embedder.encode_documents([chunk.text for chunk in chunks])
-
-            if len(vectors) != len(chunks):
+            if len(vectors) != len(indexed_chunks):
                 raise ValueError(
-                    f"Embedding count mismatch: got {len(vectors)} vectors for {len(chunks)} chunks"
+                    f"Embedding count mismatch: got {len(vectors)} vectors for {len(indexed_chunks)} chunks"
                 )
 
             # remove old chunks if re-indexing
@@ -146,10 +127,13 @@ class Indexer:
             now = self._now()
             rows: list[ChunkModel] = []
 
-            for chunk, vector in zip(chunks, vectors):
+            for item, vector in zip(indexed_chunks, vectors):
+                chunk = item["chunk"]
+
                 rows.append(
                     ChunkModel(
                         file_id=file.id,
+                        tab_id=item["tab_id"],
                         chunk_index=chunk.index,
                         text=chunk.text,
                         embedding=vector,
@@ -168,7 +152,7 @@ class Indexer:
                 file_id=file.id,
                 status=self.indexed_status,
                 num_chunks=len(rows),
-                extracted_chars=len(cleaned_text),
+                extracted_chars=sum(len(item["text"]) for item in indexed_chunks),
             )
 
         except Exception as e:
@@ -202,6 +186,83 @@ class Indexer:
         for file in files:
             results.append(self.index_file(db, file.id))
         return results
+
+    def _build_chunks(self, db: Session, file: File) -> list[dict]:
+        """Build chunks for uploaded files or internal IDOC documents."""
+
+        suffix = os.path.splitext(file.name)[1].lower() if file.name and "." in file.name else ""
+
+        if suffix == ".idoc":
+            return self._build_idoc_chunks(db, file)
+
+        raw_text = self._extract_text_from_s3(file)
+        cleaned_text = clean(raw_text)
+
+        if not cleaned_text.strip():
+            return []
+
+        chunks = chunk_text(
+            cleaned_text,
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
+
+        return [
+            {
+                "tab_id": None,
+                "text": cleaned_text,
+                "chunk": chunk,
+            }
+            for chunk in chunks
+        ]
+
+    def _build_idoc_chunks(self, db: Session, file: File) -> list[dict]:
+        """Build chunks for each tab in an IDOC file."""
+
+        tabs = db.scalars(
+            select(Tab)
+            .where(Tab.file_id == file.id)
+            .order_by(Tab.created_at.asc())
+        ).all()
+
+        indexed_chunks: list[dict] = []
+
+        for tab in tabs:
+            raw_content = tab.content or ""
+
+            try:
+                data = json.loads(raw_content)
+            except json.JSONDecodeError:
+                data = {"pages": [raw_content]}
+
+            parts: list[str] = []
+
+            pages = data.get("pages", [])
+            if isinstance(pages, list):
+                for page in pages:
+                    text = _html_to_text(str(page))
+                    if text.strip():
+                        parts.append(text)
+
+            cleaned_text = clean("\n\n".join(parts))
+
+            if not cleaned_text.strip():
+                continue
+
+            chunks = chunk_text(
+                cleaned_text,
+                chunk_size=self.chunk_size,
+                chunk_overlap=self.chunk_overlap,
+            )
+            for chunk in chunks:
+                indexed_chunks.append(
+                    {
+                        "tab_id": tab.id,
+                        "text": cleaned_text,
+                        "chunk": chunk,
+                    }
+                )
+        return indexed_chunks
 
     def _extract_text_from_s3(self, file: File) -> str:
         if not file.s3_key:

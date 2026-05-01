@@ -14,6 +14,7 @@ class Chunk(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     file_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("files.id", ondelete="CASCADE"))
+    tab_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("tabs.id", ondelete="CASCADE"), nullable=True)
     chunk_index: Mapped[int] = mapped_column(Integer)
     text: Mapped[str] = mapped_column(Text) # The actual text content of the chunk
     embedding: Mapped[Optional[list]] = mapped_column(Vector(1024), nullable=True)
@@ -23,3 +24,4 @@ class Chunk(Base):
 
     # Relationships
     file: Mapped["File"] = relationship(back_populates="chunks")
+    tab = relationship("Tab")

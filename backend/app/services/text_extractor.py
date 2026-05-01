@@ -9,6 +9,7 @@ from charset_normalizer import from_path
 import pymupdf
 import docx
 import re
+import json
 from collections import Counter
 
 def _strip_repeating_headers_footers(pages: list[str]) -> list[str]:
@@ -59,6 +60,28 @@ def _rejoin_hyphenation(text: str) -> str:
     'exam-\\nple' -> 'example'
     """
     return _SOFT_HYPHEN_RE.sub(r"\1\2", text)
+
+def _html_to_text(html: str) -> str:
+    """Convert editor HTML content into plain searchable text."""
+
+    # Treat line breaks and block endings as spacing before removing tags.
+    html = re.sub(r"<br\s*/?>", "\n", html, flags=re.IGNORECASE)
+    html = re.sub(r"</(p|div|li|h[1-6]|slot)>", "\n", html, flags=re.IGNORECASE)
+
+    # Remove all remaining HTML tags.
+    text = re.sub(r"<[^>]+>", "", html)
+
+    # Decode common HTML entities.
+    text = (
+        text.replace("&nbsp;", " ")
+            .replace("&amp;", "&")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&quot;", '"')
+            .replace("&#39;", "'")
+    )
+
+    return text.strip()
 
 def clean(text: str) -> str:
     """Clean raw extracted text.
@@ -149,6 +172,22 @@ def extract_txt(path: str) -> str:
         return str(result)
     return Path(path).read_text(encoding="utf-8", errors="replace")
 
+def extract_idoc(path: str) -> str:
+    """Extract text from an IDOC file stored as JSON."""
+
+    raw = Path(path).read_text(encoding="utf-8", errors="replace")
+    data = json.loads(raw)
+
+    parts: list[str] = []
+
+    pages = data.get("pages", [])
+    if isinstance(pages, list):
+        for page in pages:
+            text = _html_to_text(str(page))
+            if text.strip():
+                parts.append(text)
+
+    return "\n\n".join(parts)
 
 def extract(path: str) -> str:
     """Extract text from a file depending on file type."""
@@ -161,3 +200,7 @@ def extract(path: str) -> str:
         return extract_docx(path)
     elif suff == ".txt":
         return extract_txt(path)
+    elif suff == ".idoc":
+        return extract_idoc(path)
+    else:
+        raise ValueError(f"Unsupported file type: {suff}")

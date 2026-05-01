@@ -805,6 +805,7 @@ async def update_file_content(
 async def update_tab_content(
     tab_id: uuid.UUID,
     payload: UpdateTabRequest,
+    background_tasks: BackgroundTasks,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)]
 ):
@@ -834,10 +835,15 @@ async def update_tab_content(
                 ContentType="application/json"
             )
             file.updated_at = now
+            file.size_bytes = len(json.dumps(payload.content).encode("utf-8"))
+            file.status = "completed"
         except ClientError:
             pass # DB update remains even if S3 is momentarily unreachable
 
     db.commit()
+
+    if file:
+        background_tasks.add_task(_run_indexer, file.id)
     
     return {"message": "Tab updated successfully"}
 
