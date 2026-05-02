@@ -208,7 +208,7 @@ export const uploadFile = async (file, profileId, folderId = null, progressCallb
   return { file_id };
 };
 
-// Preview file
+// Preview txt/pdf file
 export const getPreviewUrl = async (fileId, profileId) => {
   const token = localStorage.getItem("token");
   if (!profileId) profileId = localStorage.getItem("currentProfileId");
@@ -217,6 +217,22 @@ export const getPreviewUrl = async (fileId, profileId) => {
   const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (!response.ok) throw new Error("Failed to get preview URL");
   return response.json();
+};
+
+// Preview docx files
+export const getFileBlob = async (fileId, profileId) => {
+    if (!fileId) throw new Error("File ID is required");
+    
+    // Ensure profileId is provided, or grab it from localStorage as a fallback
+    const pId = profileId || localStorage.getItem("currentProfileId");
+    if (!pId) throw new Error("Profile ID is required");
+
+    const { url } = await getPreviewUrl(fileId, pId);
+    
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Failed to download: ${response.statusText}`);
+    
+    return await response.blob();
 };
 
 // Download file
@@ -427,3 +443,4 @@ export const resumeUpload = async (fileId, file, profileId, folderId, progressCa
     }
   );
 };
+
