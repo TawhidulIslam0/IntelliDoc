@@ -560,16 +560,22 @@ async def preview_file(
         raise HTTPException(status_code=404, detail="File not found")
 
     try:
+        # Prepare S3 parameters with inline disposition for preview
+        params = {
+            "Bucket": BUCKET_NAME, 
+            "Key": file.s3_key,
+            "ResponseContentDisposition": "inline"
+        }
+        
         presigned_url = s3.generate_presigned_url(
             "get_object",
-            Params={"Bucket": BUCKET_NAME, "Key": file.s3_key},
+            Params=params,
             ExpiresIn=PRESIGNED_URL_EXPIRY
         )
     except ClientError:
         raise HTTPException(status_code=500, detail="Failed to generate preview URL")
 
     return {"url": presigned_url}
-
 
 # Generate presigned URL for download
 @router.get("/{file_id}/download")
