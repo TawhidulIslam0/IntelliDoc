@@ -2,13 +2,14 @@
 /* eslint-disable no-undef */
 import React, { useEffect, useState, useContext, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams, useLocation } from "react-router-dom"; // Added useLocation
-import { uploadFile, getPreviewUrl, deleteFile, createBlankDoc, renameFile, moveFile, cancelFileUpload } from "../api/fileService"; 
+import { uploadFile, getPreviewUrl, deleteFile, createBlankDoc, renameFile, moveFile, cancelFileUpload, getFileBlob } from "../api/fileService";
 import { getFolders, createFolder, deleteFolder, renameFolder, downloadFolder } from "../api/folderService";
 import uploadIcon from "../assets/uploadbutton.png";
 import folderIcon from "../assets/folderbutton.png";
 import { ProfileContext } from "../UI/ProfileContext"; 
 import ContextMenu from "../UI/ContextMenu"; 
 import FileProgressBar from "../UI/FileProgressBar";
+import { renderAsync } from "docx-preview";
 
 // Helper function to remove extensions for display (e.g. .idoc, .pdf)
 const formatDisplayName = (name) => {
@@ -379,6 +380,26 @@ const DashBoard = ({ setDocuments }) => {
   const handleOpenDoc = async (doc) => {
     if (doc.name.endsWith(".idoc")) {
       navigate(`/editor/${doc.id}`);
+    } else if (doc.name.toLowerCase().endsWith(".docx")) {
+      try {
+        // Fetch the blob using our service
+        const blob = await getFileBlob(doc.id);
+        
+        // We set a flag to trigger the specialized rendering view
+        setPreviewUrl("docx-view-mode");
+        
+        // Wait for the render container to exist in the DOM
+        setTimeout(async () => {
+          const container = document.getElementById("preview-container");
+          if (container) {
+            await renderAsync(blob, container);
+          }
+        }, 100);
+        
+      } catch (err) {
+        console.error("Docx preview failed:", err);
+        alert("Failed to render Word document");
+      }
     } else {
       try {
         const { url } = await getPreviewUrl(doc.id);
@@ -661,29 +682,40 @@ const DashBoard = ({ setDocuments }) => {
     );
   }
 
-  // If previewUrl is present show only the preview content 
+// If previewUrl is present show only the preview content 
   if (previewUrl) {
     return (
       <div style={{ flex: 1, backgroundColor: "white", display: "flex", flexDirection: "column" }}>
         <div style={{ padding: "10px 20px", borderBottom: "1px solid #E5E7EB", display: "flex", alignItems: "center" }}>
           <button 
-            onClick={() => setPreviewUrl(null)} 
+            onClick={() => {
+              setPreviewUrl(null); 
+              
+              // Clear the contents of the container so the old doc is removed from the DOM
+              const container = document.getElementById("preview-container");
+              if (container) {
+                container.innerHTML = ''; 
+              }
+            }} 
             style={{ padding: "8px 16px", borderRadius: 4, border: "1px solid #dadce0", cursor: "pointer", backgroundColor: "white", fontSize: 14 }}
           >
             ← Back to Dashboard
           </button>
         </div>
-        <div style={{ flex: 1 }}>
-          <iframe 
-            src={previewUrl} 
-            title="File Preview" 
-            style={{ width: "100%", height: "calc(100vh - 120px)", border: "none" }} 
-          />
+        <div style={{ flex: 1, overflow: "auto" }}>
+          {previewUrl === "docx-view-mode" ? (
+             <div id="preview-container" style={{ padding: "20px" }}></div>
+          ) : (
+             <iframe 
+               src={previewUrl} 
+               title="File Preview" 
+               style={{ width: "100%", height: "calc(100vh - 120px)", border: "none" }} 
+             />
+          )}
         </div>
       </div>
     );
   }
-
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
       {user && (
