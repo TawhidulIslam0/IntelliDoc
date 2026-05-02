@@ -90,6 +90,7 @@ export default function DashboardNavbar({ user }) {
     setSearchQuery("");
     setSearchResults({ files: [], folders: [] });
 
+    //  Handle Folders
     if (type === 'folder' || item.type === 'folder') {
       navigate(`/dashboard?folderId=${item.id}`);
       return;
@@ -97,17 +98,44 @@ export default function DashboardNavbar({ user }) {
 
     const fileName = item.name?.toLowerCase() || "";
 
-    const isExternalFile = fileName.endsWith(".pdf") || fileName.endsWith(".txt") || fileName.endsWith(".docx");
-
-    if (isExternalFile) {
+    //  Handle Word Documents (.docx) specifically
+    if (fileName.endsWith(".docx")) {
       try {
+        // Import getFileBlob dynamically 
+        const { getFileBlob } = await import("../api/fileService");
+        const blob = await getFileBlob(item.id);
+        
+        // Navigate to dashboard and pass the "docx-view-mode" flag
+        navigate("/dashboard", { 
+          state: { openPreviewUrl: "docx-view-mode" } 
+        });
+
+        // Small delay to let the Dashboard component mount and container render
+        setTimeout(async () => {
+          const { renderAsync } = await import("docx-preview");
+          const container = document.getElementById("preview-container");
+          if (container) {
+            await renderAsync(blob, container);
+          }
+        }, 300);
+      } catch (err) {
+        console.error("Docx preview failed:", err);
+        alert("Could not open Word document.");
+      }
+    } 
+    // Handle PDF and TXT
+    else if (fileName.endsWith(".pdf") || fileName.endsWith(".txt")) {
+      try {
+        const { getPreviewUrl } = await import("../api/fileService");
         const { url } = await getPreviewUrl(item.id);
         navigate("/dashboard", { state: { openPreviewUrl: url } });
       } catch (err) {
         console.error("Failed to fetch preview for search result:", err);
         alert("Could not open preview.");
       }
-    } else {
+    } 
+    //  Handle internal .idoc files
+    else {
       navigate(`/editor/${item.id}`);
     }
   };
