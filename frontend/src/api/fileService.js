@@ -465,15 +465,30 @@ export const exportFile = async (fileId, format, profileId = null) => {
     throw new Error(errorData.detail || "Failed to export file");
   }
 
+  // Get filename from backend Content-Disposition header
+  const contentDisposition = response.headers.get("Content-Disposition");
+  let filename = `exported_file.${format}`;
+
+  if (contentDisposition) {
+    const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+    if (filenameMatch?.[1]) {
+      filename = filenameMatch[1];
+    }
+  }
+
   // Get the blob and trigger the download
   const blob = await response.blob();
   const downloadUrl = window.URL.createObjectURL(blob);
   const a = document.createElement('a');
+
   a.href = downloadUrl;
-  a.download = `exported_file.${format}`;
+  a.download = filename;
+
   document.body.appendChild(a);
   a.click();
   a.remove();
-  
+
+  window.URL.revokeObjectURL(downloadUrl);
+
   return true;
 };

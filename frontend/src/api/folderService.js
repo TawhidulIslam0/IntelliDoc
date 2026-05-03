@@ -103,14 +103,27 @@ export const downloadFolder = async (folderId, profileId) => {
     throw new Error("Failed to download folder");
   }
 
+  const contentDisposition = response.headers.get("Content-Disposition");
+  let filename = "folder.zip";
+
+  if (contentDisposition) {
+    const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+    if (filenameMatch?.[1]) {
+      filename = filenameMatch[1];
+    }
+  }
+
   const blob = await response.blob();
   const downloadUrl = window.URL.createObjectURL(blob);
   const a = document.createElement("a");
+
   a.href = downloadUrl;
-  a.download = "folder.zip";
+  a.download = filename;
+
   document.body.appendChild(a);
   a.click();
   a.remove();
+
   window.URL.revokeObjectURL(downloadUrl);
 };
 
