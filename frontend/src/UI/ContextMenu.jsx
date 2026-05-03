@@ -4,10 +4,15 @@ import renameFolderIcon from '../assets/renamefolder.png';
 import downloadFileIcon from '../assets/downloadfilebutton.png';
 import deleteFileIcon from '../assets/deletefilebutton.png';
 import deleteFolderIcon from '../assets/deletefolderbutton.png';
+import pdfIcon from '../assets/pdf_icon.png';
+import docxIcon from '../assets/docx_icon.png';
+import txtIcon from '../assets/txt_icon.png';
 
 export default function ContextMenu({ x, y, type, item, onClose, onAction }) {
   const menuRef = useRef(null);
   const [position, setPosition] = useState({ x, y });
+  // State to toggle between main menu and download format selection
+  const [showDownloadOptions, setShowDownloadOptions] = useState(false);
 
   useLayoutEffect(() => {
     if (!menuRef.current) return;
@@ -44,6 +49,19 @@ export default function ContextMenu({ x, y, type, item, onClose, onAction }) {
   const downloadIcon = downloadFileIcon; 
   const deleteIcon = isFolder ? deleteFolderIcon : deleteFileIcon;
 
+  // Logic to determine if we show the "Download as..." in submenu
+  const canShowExportOptions = isDoc;
+
+  const handleDownloadClick = () => {
+    if (canShowExportOptions) {
+      setShowDownloadOptions(true);
+    } else {
+      // For standard uploaded files/folders, just trigger a normal download 
+      onAction('download', item);
+      onClose();
+    }
+  };
+
   // The floating container style
   const menuStyle = {
     position: 'fixed',
@@ -78,41 +96,60 @@ export default function ContextMenu({ x, y, type, item, onClose, onAction }) {
       />
 
       <div ref={menuRef} style={menuStyle}>
-        {/* RENAME */}
-        {(isFolder || isDoc) && (
-          <div 
-            style={itemStyle} 
-            className="context-menu-item"
-            onClick={() => { onAction('rename', item); onClose(); }}
-          >
-            <img src={renameIcon} alt="rename" width="18" height="18" />
-            <span>Rename</span>
-          </div>
+        {showDownloadOptions ? (
+          /* DOWNLOAD SUBMENU for idocs files */
+          <>
+            <div style={{ padding: '8px 14px', fontSize: '12px', fontWeight: 'bold', color: '#5f6368' }}>Export as...</div>
+            <div style={itemStyle} className="context-menu-item" onClick={() => { onAction('download', { ...item, format: 'pdf' }); onClose(); }}>
+              <img src={pdfIcon} alt="pdf" width="18" height="18" /> <span>PDF</span>
+            </div>
+            <div style={itemStyle} className="context-menu-item" onClick={() => { onAction('download', { ...item, format: 'docx' }); onClose(); }}>
+              <img src={docxIcon} alt="docx" width="18" height="18" /> <span>DOCX</span>
+            </div>
+            <div style={itemStyle} className="context-menu-item" onClick={() => { onAction('download', { ...item, format: 'txt' }); onClose(); }}>
+              <img src={txtIcon} alt="txt" width="18" height="18" /> <span>TXT</span>
+            </div>
+          </>
+        ) : (
+          /* MAIN CONTEXT MENU */
+          <>
+            {/* RENAME */}
+            {(isFolder || isDoc) && (
+              <div 
+                style={itemStyle} 
+                className="context-menu-item"
+                onClick={() => { onAction('rename', item); onClose(); }}
+              >
+                <img src={renameIcon} alt="rename" width="18" height="18" />
+                <span>Rename</span>
+              </div>
+            )}
+
+            {/* DOWNLOAD */}
+            {(isDoc || isFile || isFolder) && (
+              <div 
+                style={itemStyle} 
+                className="context-menu-item"
+                onClick={handleDownloadClick}
+              >
+                <img src={downloadIcon} alt="download" width="18" height="18" />
+                <span>Download{canShowExportOptions ? '...' : ''}</span>
+              </div>
+            )}
+
+            <div style={{ borderTop: '1px solid #e8e8ed', margin: '4px 0' }} />
+
+            {/* DELETE */}
+            <div 
+              style={{ ...itemStyle, color: '#d93025' }} 
+              className="context-menu-item"
+              onClick={() => { onAction('delete', item); onClose(); }}
+            >
+              <img src={deleteIcon} alt="delete" width="18" height="18" />
+              <span>Remove</span>
+            </div>
+          </>
         )}
-
-        {/* DOWNLOAD */}
-        {(isDoc || isFile || isFolder) && (
-          <div 
-            style={itemStyle} 
-            className="context-menu-item"
-            onClick={() => { onAction('download', item); onClose(); }}
-          >
-            <img src={downloadIcon} alt="download" width="18" height="18" />
-            <span>Download</span>
-          </div>
-        )}
-
-        <div style={{ borderTop: '1px solid #e8eaed', margin: '4px 0' }} />
-
-        {/* DELETE */}
-        <div 
-          style={{ ...itemStyle, color: '#d93025' }} 
-          className="context-menu-item"
-          onClick={() => { onAction('delete', item); onClose(); }}
-        >
-          <img src={deleteIcon} alt="delete" width="18" height="18" />
-          <span>Remove</span>
-        </div>
       </div>
 
       {/* Basic hover effect */}
