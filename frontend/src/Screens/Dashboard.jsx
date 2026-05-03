@@ -2,7 +2,7 @@
 /* eslint-disable no-undef */
 import React, { useEffect, useState, useContext, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams, useLocation } from "react-router-dom"; // Added useLocation
-import { uploadFile, getPreviewUrl, deleteFile, createBlankDoc, renameFile, moveFile, cancelFileUpload, getFileBlob } from "../api/fileService";
+import { uploadFile, getPreviewUrl, deleteFile, createBlankDoc, renameFile, moveFile, cancelFileUpload, getFileBlob, exportFile} from "../api/fileService";
 import { getFolders, createFolder, deleteFolder, renameFolder, downloadFolder } from "../api/folderService";
 import uploadIcon from "../assets/uploadbutton.png";
 import folderIcon from "../assets/folderbutton.png";
@@ -307,17 +307,23 @@ const DashBoard = ({ setDocuments }) => {
     if (action === 'delete') {
       menuConfig.type === 'folder' ? handleDeleteFolder(item.id) : handleDeleteFile(item.id);
     } else if (action === 'download') {
-      try {
-        if (menuConfig.type === 'folder') {
-          await downloadFolder(item.id);
-        } else {
-          await handleDownloadFile(item.id, item.name);
-        }
-      } catch (err) {
-        console.error("Download failed:", err);
-        alert("Failed to download item");
+  try {
+    if (menuConfig.type === 'folder') {
+      await downloadFolder(item.id);
+    } else {
+      const isInternalDoc = item.name.endsWith(".idoc");
+
+      if (isInternalDoc && item.format) {
+        await exportFile(item.id, item.format);
+      } else {
+        await handleDownloadFile(item.id, item.name);
       }
-    } else if (action === 'rename') {
+    }
+  } catch (err) {
+    console.error("Action failed:", err);
+    alert("Failed to process request: " + err.message);
+  }
+} else if (action === 'rename') {
       const currentName = formatDisplayName(item.name);
       const newName = prompt("Enter new name:", currentName);
       
