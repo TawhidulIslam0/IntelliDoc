@@ -444,3 +444,36 @@ export const resumeUpload = async (fileId, file, profileId, folderId, progressCa
   );
 };
 
+// Download/Export file with conversion
+export const exportFile = async (fileId, format, profileId = null) => {
+  const token = localStorage.getItem("token");
+  const pId = profileId || localStorage.getItem("currentProfileId");
+  
+  if (!pId) throw new Error("Profile ID is required");
+
+  // Construct URL with query parameters for format and profile
+  const url = new URL(`${API_URL}/files/${fileId}/export`);
+  url.searchParams.append("format", format);
+  url.searchParams.append("profile_id", pId);
+
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: "Export failed" }));
+    throw new Error(errorData.detail || "Failed to export file");
+  }
+
+  // Get the blob and trigger the download
+  const blob = await response.blob();
+  const downloadUrl = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = downloadUrl;
+  a.download = `exported_file.${format}`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  
+  return true;
+};
