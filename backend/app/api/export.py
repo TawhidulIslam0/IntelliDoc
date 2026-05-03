@@ -39,7 +39,7 @@ BUCKET_NAME = os.getenv("AWS_BUCKET_NAME")
 
 router = APIRouter(prefix="/files", tags=["export"])
 
-SUPPORTED_FORMATS = {"pdf", "docx", "md"}
+SUPPORTED_FORMATS = {"pdf", "docx", "md", "txt"}
 
 # To Markdown
 def idoc_to_markdown(pages: list[str]) -> str:
@@ -47,6 +47,15 @@ def idoc_to_markdown(pages: list[str]) -> str:
     converter = html2text.HTML2Text()
     converter.ignore_links = False
     return "\n\n---\n\n".join(converter.handle(page) for page in pages) # Joins pages
+
+# To TXT
+def idoc_to_txt(pages: list[str]) -> str:
+    # Extract text from HTML on each page and join with double newlines
+    text_content = []
+    for page_html in pages:
+        soup = BeautifulSoup(page_html, "html.parser")
+        text_content.append(soup.get_text(separator="\n"))
+    return "\n\n".join(text_content)
 
 # DOCX helper for inline formatting within a single block element. 
 def _add_runs(para, element) -> None:
@@ -119,7 +128,7 @@ async def export_file(
     file_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-    format: str = Query(..., description = "Export format: MD, DOCX, or PDF"),
+    format: str = Query(..., description = "Export format: MD, DOCX, PDF, or TXT"),
     profile_id: Optional[uuid.UUID] = None,
 ):
     if format not in SUPPORTED_FORMATS:
@@ -175,6 +184,10 @@ async def export_file(
             data = idoc_to_docx(pages)
             media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             filename = f"{base_name}.docx"
+        elif format == "txt":
+            data = idoc_to_txt(pages).encode("utf-8")
+            media_type = "text/plain"
+            filename = f"{base_name}.txt"
         else:  # pdf
             data = idoc_to_pdf(pages)
             media_type = "application/pdf"
