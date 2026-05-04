@@ -1,11 +1,13 @@
 /* eslint-disable no-unused-vars */
 import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { MoreVertical, Plus, Copy, Type, Trash2, List, ChevronRight, FileText } from "lucide-react";
 import * as fileService from "../api/fileService";
 
 export default function Sidebar({ fileId, tabs, setTabs, activeTabId, setActiveTabId, currentContent }) {
   const [showOutline, setShowOutline] = useState(true);
   const [menuOpenId, setMenuOpenId] = useState(null);
+  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
   const menuRef = useRef(null);
 
   useEffect(() => {
@@ -17,6 +19,7 @@ export default function Sidebar({ fileId, tabs, setTabs, activeTabId, setActiveT
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
   const syncLocalTabs = () => {
     if (!currentContent || !activeTabId) return;
     setTabs(prev => prev.map(t => 
@@ -115,30 +118,39 @@ export default function Sidebar({ fileId, tabs, setTabs, activeTabId, setActiveT
             <button
               onClick={(e) => {
                 e.stopPropagation();
+                // Capture click position for Portal
+                const rect = e.currentTarget.getBoundingClientRect();
+                setMenuPosition({
+                  top: rect.bottom + 4,
+                  left: rect.right - 160
+                });
                 setMenuOpenId(menuOpenId === tab.id ? null : tab.id);
               }}
               style={styles.menuButton}
             >
               <MoreVertical size={16} />
             </button>
-            {menuOpenId === tab.id && (
-              <div style={styles.dropdown} ref={menuRef}>
-                <div style={styles.menuItem} onClick={(e) => { e.stopPropagation(); handleDuplicateTab(tab.id); }}>
-                  <Copy size={14} /> Duplicate
-                </div>
-                <div style={styles.menuItem} onClick={(e) => { e.stopPropagation(); handleRenameTab(tab.id, tab.name); }}>
-                  <Type size={14} /> Rename
-                </div>
-                {!isFirst && (
-                  <>
-                    <div style={styles.divider} />
-                    <div style={{ ...styles.menuItem, color: "#D93025" }} onClick={(e) => { e.stopPropagation(); handleDeleteTab(tab.id); }}>
-                      <Trash2 size={14} /> Delete
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
+            {/* PORTAL MENU */}
+            {menuOpenId === tab.id &&
+              createPortal(
+                <div style={{ ...styles.dropdown, position: "fixed", top: menuPosition.top, left: menuPosition.left }} ref={menuRef}>
+                  <div style={styles.menuItem} onClick={(e) => { e.stopPropagation(); handleDuplicateTab(tab.id); }}>
+                    <Copy size={14} /> Duplicate
+                  </div>
+                  <div style={styles.menuItem} onClick={(e) => { e.stopPropagation(); handleRenameTab(tab.id, tab.name); }}>
+                    <Type size={14} /> Rename
+                  </div>
+                  {!isFirst && (
+                    <>
+                      <div style={styles.divider} />
+                      <div style={{ ...styles.menuItem, color: "#D93025" }} onClick={(e) => { e.stopPropagation(); handleDeleteTab(tab.id); }}>
+                        <Trash2 size={14} /> Delete
+                      </div>
+                    </>
+                  )}
+                </div>,
+                document.body
+              )}
           </div>
         </div>
       </div>
@@ -176,18 +188,28 @@ const styles = {
   sidebar: { width: "260px", backgroundColor: "#fff", borderRight: "1px solid #e0e0e0", display: "flex", flexDirection: "column", padding: "16px 0px", height: "100%" },
   headerRow: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px 12px 16px" },
   sectionHeader: { fontSize: "14px", color: "#3C4043", margin: 0 },
-  iconAddBtn: { background: "none", border: "none", cursor: "pointer", color: "#5F6368", padding: "4px", borderRadius: "50%", display: "flex", alignItems: "center", transition: "background-color 0.2s" },
+  iconAddBtn: { background: "none", border: "none", cursor: "pointer", color: "#5F6368", padding: "4px", borderRadius: "50%", display: "flex", alignItems: "center" },
   tabList: { flex: 1, overflowY: "auto" },
   tabWrapper: { paddingRight: "8px" },
   tabItem: { position: "relative", display: "flex", alignItems: "center", padding: "0 12px 0 16px", height: "40px", borderRadius: "0 24px 24px 0", cursor: "pointer", margin: "2px 0" },
-  tabLabelGroup: { display: "flex", alignItems: "center", flex: 1, overflow: "hidden" },
-  activeIndicator: { position: "absolute", left: 0, height: "24px", width: "4px", backgroundColor: "#1967D2", borderRadius: "0 2px 2px 0" },
-  tabName: { fontSize: "14px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  tabLabelGroup: { display: "flex", alignItems: "center", flex: 1 },
+  activeIndicator: { position: "absolute", left: 0, height: "24px", width: "4px", backgroundColor: "#1967D2" },
+  tabName: { fontSize: "14px" },
   menuButton: { background: "none", border: "none", cursor: "pointer", display: "flex", padding: "6px" },
-  dropdown: { position: "absolute", top: "32px", right: "0", backgroundColor: "#fff", border: "1px solid #e0e0e0", borderRadius: "8px", boxShadow: "0 2px 10px rgba(0,0,0,0.1)", zIndex: 1000, width: "160px", padding: "6px 0" },
+
+  dropdown: {
+    backgroundColor: "#fff",
+    border: "1px solid #e0e0e0",
+    borderRadius: "8px",
+    boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
+    zIndex: 9999,
+    width: "160px",
+    padding: "6px 0"
+  },
+
   menuItem: { padding: "10px 16px", fontSize: "13px", display: "flex", alignItems: "center", gap: "12px", cursor: "pointer", color: "#3C4043" },
   divider: { height: "1px", backgroundColor: "#e0e0e0", margin: "4px 0" },
   outlineSection: { marginTop: "auto", borderTop: "1px solid #e0e0e0", padding: "16px" },
   outlineHeader: { display: "flex", alignItems: "center", gap: "12px", fontSize: "14px", cursor: "pointer" },
-  outlineContent: { fontSize: "12px", color: "#70757a", marginTop: "16px", fontStyle: "italic" },
+  outlineContent: { fontSize: "12px", color: "#70757a", marginTop: "16px" },
 };
