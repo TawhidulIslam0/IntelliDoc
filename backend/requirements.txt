@@ -17,4 +17,3 @@ beautifulsoup4
 xhtml2pdf
 transformers
 charset-normalizer
-torch
