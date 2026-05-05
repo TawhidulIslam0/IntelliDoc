@@ -1,1 +1,1 @@
-Live application: https://tawhidulislam0.github.io/IntelliDoc/
+Live application:intellidoc-ruddy.vercel.app
