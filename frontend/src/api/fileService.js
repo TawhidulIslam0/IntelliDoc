@@ -1,4 +1,4 @@
-const API_URL = "http://localhost:8000/api";
+const API_URL = import.meta.env.VITE_API_URL + "/api";
 // Increased chunk size to 10MB for better performance on large files
 const CHUNK_SIZE = 10 * 1024 * 1024; 
 // Increased max limit to be 100MB(102,400kb)
