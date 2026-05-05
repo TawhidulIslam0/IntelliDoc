@@ -8,6 +8,8 @@ import email_icon from "../assets/email.png";
 import password_icon from "../assets/password.png";
 import google_icon from "../assets/google_icon_logo.png"; 
 
+const API_BASE = import.meta.env.VITE_API_URL;
+
 const Signup = () => {
 
   // State for inputs, errors, loading
@@ -46,7 +48,7 @@ const Signup = () => {
 
   const handleGoogleSignup = () => {
     window.location.href =
-      "http://localhost:8000/api/auth/google/login";
+      `${API_BASE}/auth/google/login`;
   };
 
   return (

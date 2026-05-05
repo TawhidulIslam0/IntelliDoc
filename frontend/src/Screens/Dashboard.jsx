@@ -16,6 +16,9 @@ const formatDisplayName = (name) => {
   return name.replace(/\.[^/.]+$/, "");
 };
 
+const API_BASE = import.meta.env.VITE_API_URL;
+
+
 // Sub-component for Folder to handle individual hover state
 const FolderItem = ({ folder, onFolderClick, onOpenMenu, onDropFile }) => {
   const [isHovered, setIsHovered] = useState(false);
@@ -208,7 +211,7 @@ const DashBoard = ({ setDocuments }) => {
       }
 
       try {
-        const res = await fetch("http://localhost:8000/api/users/me", {
+        const res = await fetch(`${API_BASE}/api/users/me`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 
@@ -269,8 +272,8 @@ const DashBoard = ({ setDocuments }) => {
       try {
         const targetId = folderId !== null ? folderId : currentFolderId;
         const url = targetId
-          ? `http://localhost:8000/api/files/?folder_id=${targetId}&profile_id=${currentProfile.id}`
-          : `http://localhost:8000/api/files/?profile_id=${currentProfile.id}`;
+        ? `${API_BASE}/api/files/?folder_id=${targetId}&profile_id=${currentProfile.id}`
+         : `${API_BASE}/api/files/?profile_id=${currentProfile.id}`;
 
         const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
 
@@ -435,7 +438,7 @@ const DashBoard = ({ setDocuments }) => {
     try {
       const token = localStorage.getItem("token");
       if (!token) throw new Error("No auth token found");
-      const res = await fetch(`http://localhost:8000/api/files/${fileId}/download`, {
+      const res = await fetch(`${API_BASE}/api/files/${fileId}/download`,{
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error("Failed to get download URL");

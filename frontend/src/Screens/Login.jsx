@@ -12,6 +12,8 @@ import google_icon from "../assets/google_icon_logo.png";
 // Import ProfileContext
 import { ProfileContext } from "../UI/ProfileContext";
 
+const API_BASE = import.meta.env.VITE_API_URL;
+
 const Login = () => {
   // Local state for inputs and error messages
   const [username, setUsername] = useState("");
@@ -30,7 +32,7 @@ const Login = () => {
 
     const validateToken = async () => {
       try {
-        const res = await fetch("http://localhost:8000/api/users/me", {
+       const res = await fetch(`${API_BASE}/api/users/me`,{
           headers: { Authorization: `Bearer ${token}` },
         });
 
@@ -75,7 +77,7 @@ const Login = () => {
 
   const handleGoogleLogin = () => {
     window.location.href =
-      "http://localhost:8000/api/auth/google/login";
+     `${API_BASE}/auth/google/login`;
   };
 
   return (
