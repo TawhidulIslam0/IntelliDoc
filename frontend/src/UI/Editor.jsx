@@ -10,6 +10,8 @@ const GAP_SIZE = 24;
 const PADDING = 96; 
 const OVERFLOW_BUFFER = 5; 
 
+const API_BASE = import.meta.env.VITE_API_URL;
+
 const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTabId, tabs, onContentChange }, ref) => {
   const containerRef = useRef(null);
   const saveTimeoutRef = useRef(null);
@@ -72,7 +74,7 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
         if (!activeTabId) return;
         
         const token = localStorage.getItem("token");
-        const url = `http://localhost:8000/api/files/tabs/${activeTabId}`;
+        const url = `${API_BASE}/api/files/tabs/${activeTabId}`;
         const body = JSON.stringify({ content: contentObj });
 
         const res = await fetch(url, {

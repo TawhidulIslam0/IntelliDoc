@@ -1,7 +1,8 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { useState, useEffect, createContext, useCallback } from "react";
-
 export const ProfileContext = createContext(null);
+
+const API_BASE = import.meta.env.VITE_API_URL;
 
 export const ProfileProvider = ({ children }) => {
   const [profiles, setProfiles] = useState([]);
@@ -16,11 +17,11 @@ export const ProfileProvider = ({ children }) => {
       return;
     }
 
-    //  Ensure loading is true while fetching profiles
+    // Ensure loading is true while fetching profiles
     setLoading(true);
 
     try {
-      const res = await fetch("http://localhost:8000/api/profiles/", {
+      const res = await fetch(`${API_BASE}/api/profiles/`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -77,7 +78,6 @@ export const ProfileProvider = ({ children }) => {
 
   return (
     <ProfileContext.Provider
-      //  refreshProfiles to the context value so Login.js can trigger it
       value={{ profiles, currentProfile, setCurrentProfile, loading, refreshProfiles: fetchProfiles }}
     >
       {children}
