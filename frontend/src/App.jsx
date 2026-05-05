@@ -15,8 +15,9 @@ import OAuthSuccess from "./Screens/OAuthSuccess";
 import ProtectedRoute from "./auth/ProtectedRoute";
 
 import { ProfileContext } from "./UI/ProfileContext";
-
 import "./UI/Print.css";
+
+const API_BASE = import.meta.env.VITE_API_URL;
 
 export default function App() {
   const { currentProfile, loading: profileLoading } = useContext(ProfileContext);
@@ -60,7 +61,7 @@ export default function App() {
       }
 
       try {
-        const res = await fetch("http://127.0.0.1:8000/api/users/me", {
+        const res = await fetch(`${API_BASE}/api/users/me`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 
@@ -108,7 +109,7 @@ export default function App() {
 
       try {
         const token = localStorage.getItem("token");
-        const res = await fetch(`http://127.0.0.1:8000/api/files/${urlId}/tabs`, {
+        const res = await fetch(`${API_BASE}/api/files/${urlId}/tabs`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 
@@ -146,7 +147,7 @@ export default function App() {
     const token = localStorage.getItem("token");
 
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/files/${docId}/rename`, {
+      const res = await fetch(`${API_BASE}/api/files/${docId}/rename`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
