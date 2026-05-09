@@ -924,28 +924,18 @@ async def update_tab_content(
     tab.content = json.dumps(payload.content)
     tab.updated_at = now
 
-     # Also sync to S3 so the master file is always current
+    # Also sync to S3 so the master file is always current
     file = db.get(File, tab.file_id)
     if file:
-        try:
-            # Read the current document structure
-            response = s3.get_object(Bucket=BUCKET_NAME, Key=file.s3_key)
-            current_doc = json.loads(response["Body"].read().decode("utf-8"))
-        except ClientError:
-            current_doc = {}
-
-        # Merge this tab's content into the document under its tab ID key
-        current_doc[str(tab_id)] = payload.content
-
         try:
             s3.put_object(
                 Bucket=BUCKET_NAME,
                 Key=file.s3_key,
-                Body=json.dumps(current_doc),
+                Body=json.dumps(payload.content),
                 ContentType="application/json"
             )
             file.updated_at = now
-            file.size_bytes = len(json.dumps(current_doc).encode("utf-8"))
+            file.size_bytes = len(json.dumps(payload.content).encode("utf-8"))
             file.status = "completed"
         except ClientError:
             pass # DB update remains even if S3 is momentarily unreachable
