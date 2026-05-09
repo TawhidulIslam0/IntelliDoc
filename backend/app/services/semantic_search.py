@@ -4,7 +4,8 @@ semantic_search.py
 Semantic vector search service using pgvector + BGE-M3 embeddings.
 
 Flow:
-query -> clean -> embed query -> vector similarity search -> ranked chunks/files
+query -> clean -> embed query -> vector similarity search
+-> rank chunks -> collapse into ranked files
 """
 
 from __future__ import annotations
@@ -13,9 +14,11 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
-from sqlalchemy import text
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.chunk import Chunk
+from app.models.file import File
 from app.services.embedder import Embedder
 from app.services.text_extractor import clean
 
@@ -24,9 +27,14 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class SearchResult:
-    chunk_id: UUID
     file_id: UUID
     file_name: str
+    mime_type: str
+    size_bytes: int
+    folder_id: UUID | None
+
+    # Best matching chunk metadata
+    chunk_id: UUID
     chunk_text: str
     chunk_index: int
     similarity: float
@@ -57,21 +65,8 @@ class SemanticSearchService:
         file_id: UUID | None = None,
         tab_id: UUID | None = None,
         top_k: int = 5,
-        min_similarity: float = 0.65,
+        min_similarity: float = 0.40,
     ) -> list[SearchResult]:
-        """
-        Perform semantic similarity search.
-
-        Flow:
-        1. Clean query
-        2. Embed query
-        3. Compare against chunk embeddings using pgvector
-        4. Return top-k most similar chunks above min_similarity threshold
-
-        Note:
-        min_similarity filtering happens in Python after the DB fetch.
-        top_k controls how many final rows are returned after threshold filtering.
-        """
 
         if top_k <= 0:
             raise ValueError("top_k must be greater than 0")
@@ -93,87 +88,83 @@ class SemanticSearchService:
             )
             return []
 
-        # Fetch extra rows so Python-side min_similarity filtering
-        # still has enough candidates to work with.
-        db_limit = max(top_k * 4, 20)
+        if len(query_embedding) != 1024:
+            raise ValueError(
+                f"Expected embedding dimension 1024, got {len(query_embedding)}"
+            )
 
-        sql = """
-        SELECT
-            c.id AS chunk_id,
-            c.file_id,
-            c.tab_id,
-            c.chunk_index,
-            c.text AS chunk_text,
-            c.start_char,
-            c.end_char,
-            f.name AS file_name,
+        # Fetch extra rows so file collapsing still leaves enough candidates
+        db_limit = max(top_k * 10, 50)
 
-            -- cosine distance:
-            -- 0 = identical, larger = less similar
-            (c.embedding <=> :embedding) AS distance
+        distance_expr = Chunk.embedding.cosine_distance(query_embedding)
 
-        FROM chunks c
-        JOIN files f
-            ON f.id = c.file_id
+        stmt = (
+            select(
+                Chunk.id.label("chunk_id"),
+                Chunk.file_id,
+                Chunk.tab_id,
+                Chunk.chunk_index,
+                Chunk.text.label("chunk_text"),
+                Chunk.start_char,
+                Chunk.end_char,
 
-        WHERE
-            c.embedding IS NOT NULL
-            AND f.status = 'indexed'
-        """
+                File.name.label("file_name"),
+                File.mime_type,
+                File.size_bytes,
+                File.folder_id,
 
-        params: dict = {
-            "embedding": query_embedding,
-            "db_limit": db_limit,
-        }
+                distance_expr.label("distance"),
+            )
+            .join(File, File.id == Chunk.file_id)
+            .where(
+                Chunk.embedding.is_not(None),
+                File.status == "indexed",
+            )
+        )
 
-        # Optional ownership filtering
         if owner_id is not None:
-            sql += " AND f.owner_id = :owner_id"
-            params["owner_id"] = owner_id
+            stmt = stmt.where(File.owner_id == owner_id)
 
         if profile_id is not None:
-            sql += " AND f.profile_id = :profile_id"
-            params["profile_id"] = profile_id
+            stmt = stmt.where(File.profile_id == profile_id)
 
-        # Optional file filtering
         if file_id is not None:
-            sql += " AND c.file_id = :file_id"
-            params["file_id"] = file_id
+            stmt = stmt.where(Chunk.file_id == file_id)
 
-        # Optional tab filtering
         if tab_id is not None:
-            sql += " AND c.tab_id = :tab_id"
-            params["tab_id"] = tab_id
+            stmt = stmt.where(Chunk.tab_id == tab_id)
 
-        sql += """
-        ORDER BY
-            c.embedding <=> :embedding,
-            c.id
-        LIMIT :db_limit
-        """
+        stmt = (
+            stmt
+            .order_by(distance_expr, Chunk.id)
+            .limit(db_limit)
+        )
 
-        rows = db.execute(
-            text(sql),
-            params,
-        ).mappings().all()
+        rows = db.execute(stmt).mappings().all()
 
-        results: list[SearchResult] = []
+        # Keep ONLY best chunk per file
+        best_file_matches: dict[UUID, SearchResult] = {}
 
         for row in rows:
             distance = float(row["distance"])
 
-            # Since embeddings are L2-normalized and pgvector uses cosine
-            # distance here, similarity can be approximated as:
             similarity = max(0.0, 1.0 - distance)
 
             if similarity < min_similarity:
                 continue
 
-            results.append(
-                SearchResult(
-                    chunk_id=row["chunk_id"],
+            current = best_file_matches.get(row["file_id"])
+
+            # Replace only if this chunk is better
+            if current is None or similarity > current.similarity:
+                best_file_matches[row["file_id"]] = SearchResult(
                     file_id=row["file_id"],
                     file_name=row["file_name"],
+                    mime_type=row["mime_type"],
+                    size_bytes=row["size_bytes"],
+                    folder_id=row["folder_id"],
+
+                    chunk_id=row["chunk_id"],
                     chunk_text=row["chunk_text"],
                     chunk_index=row["chunk_index"],
                     similarity=round(similarity, 4),
@@ -181,9 +172,12 @@ class SemanticSearchService:
                     end_char=row["end_char"],
                     tab_id=row["tab_id"],
                 )
-            )
 
-            if len(results) >= top_k:
-                break
+        # Rank files by best similarity
+        ranked_results = sorted(
+            best_file_matches.values(),
+            key=lambda r: r.similarity,
+            reverse=True,
+        )
 
-        return results
+        return ranked_results[:top_k]

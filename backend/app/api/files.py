@@ -585,30 +585,15 @@ async def semantic_search_files(
         min_similarity=min_similarity,
     )
 
-    # Deduplicate by file while preserving ranking
-    seen = set()
     files = []
 
     for result in results:
-        if result.file_id in seen:
-            continue
-
-        seen.add(result.file_id)
-
-        file = db.get(File, result.file_id)
-
-        if not file:
-            continue
-
         files.append({
-            "id": str(file.id),
-            "name": file.name,
-            "size_bytes": file.size_bytes,
-            "mime_type": file.mime_type,
-            "folder_id": str(file.folder_id) if file.folder_id else None,
-            "created_at": file.created_at,
-            "updated_at": file.updated_at,
-            "status": file.status,
+            "id": str(result.file_id),
+            "name": result.file_name,
+            "size_bytes": result.size_bytes,
+            "mime_type": result.mime_type,
+            "folder_id": str(result.folder_id) if result.folder_id else None,
 
             # semantic metadata
             "snippet": (
@@ -618,6 +603,12 @@ async def semantic_search_files(
             ),
             "similarity": round(result.similarity, 4),
             "tab_id": str(result.tab_id) if result.tab_id else None,
+
+            # useful for future "jump to match" features
+            "chunk_id": str(result.chunk_id),
+            "chunk_index": result.chunk_index,
+            "start_char": result.start_char,
+            "end_char": result.end_char,
         })
 
     return files

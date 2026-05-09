@@ -796,22 +796,47 @@ const DashBoard = ({ setDocuments }) => {
               ) : (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 150px)", gap: 25 }}>
                   {semanticResults.map((result) => (
-                    <div key={result.chunk_id || result.id}>
-                      <FileItem 
-                          doc={{
-                            id: result.file_id,
-                            name: result.file_name || "Found Document",
-                            mime_type: result.mime_type || "application/pdf",
-                            size_bytes: 0 // Information not typically in vector result
-                          }} 
-                          onOpenDoc={handleOpenDoc} 
-                          onOpenMenu={handleOpenMenu} 
-                          isRecentDoc={false} 
-                          onDragStart={handleDragStart} 
-                        />
-                        <div style={{ fontSize: '11px', color: '#1a73e8', marginTop: '5px', textAlign: 'center', fontWeight: 500 }}>
-                          Match: {Math.round((1 - (result.distance || 0)) * 100)}%
+                    <div key={result.id}>
+                      <FileItem
+                        doc={{
+                          id: result.id,
+                          name: result.name,
+                          mime_type: result.mime_type,
+                          size_bytes: result.size_bytes || 0,
+                        }}
+                        onOpenDoc={handleOpenDoc}
+                        onOpenMenu={handleOpenMenu}
+                        isRecentDoc={false}
+                        onDragStart={handleDragStart}
+                      />
+
+                      <div
+                        style={{
+                          fontSize: "11px",
+                          color: "#1a73e8",
+                          marginTop: "5px",
+                          textAlign: "center",
+                          fontWeight: 500,
+                        }}
+                      >
+                        Match: {Math.round((result.similarity || 0) * 100)}%
+                      </div>
+
+                      {result.snippet && (
+                        <div
+                          style={{
+                            marginTop: "6px",
+                            fontSize: "11px",
+                            color: "#5f6368",
+                            lineHeight: 1.4,
+                            maxHeight: "48px",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
+                          {result.snippet}
                         </div>
+                      )}
                     </div>
                   ))}
                 </div>

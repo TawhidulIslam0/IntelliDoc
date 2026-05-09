@@ -45,7 +45,7 @@ export const getFiles = async (profileId, folderId = null, search = "") => {
   return response.json();
 };
 
-export const semanticSearch = async (profileId, query, topK = 5) => {
+export const semanticSearch = async (profileId, query, topK = 10) => {
   const token = localStorage.getItem("token");
 
   if (!profileId) {
