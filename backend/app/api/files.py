@@ -21,6 +21,7 @@ from app.models.profile import Profile
 from app.models.folder import Folder
 from app.models.tab import Tab 
 from app.services.indexer import Indexer
+from app.services.semantic_search import SemanticSearchService
 
 # Load environment variables from .env
 load_dotenv()
@@ -96,6 +97,14 @@ def get_indexer() -> Indexer:
     if _indexer is None:
         _indexer = Indexer()
     return _indexer
+
+_semantic_search: SemanticSearchService | None = None
+
+def get_semantic_search() -> SemanticSearchService:
+    global _semantic_search
+    if _semantic_search is None:
+        _semantic_search = SemanticSearchService()
+    return _semantic_search
 
 def _run_indexer(file_id: uuid.UUID) -> None:
     from app.database import SessionLocal
@@ -531,6 +540,88 @@ async def list_files(
         for file in files
     ]
 
+# Dedicated semantic search endpoint
+@router.get("/semantic-search")
+async def semantic_search_files(
+    q: str,
+    top_k: int = 10,
+    min_similarity: float = 0.40,
+    profile_id: Optional[uuid.UUID] = None,
+    db: Annotated[Session, Depends(get_db)] = None,
+    current_user: Annotated[User, Depends(get_current_user)] = None,
+):
+    # Default profile fallback
+    if not profile_id:
+        profile = db.scalar(
+            select(Profile).where(
+                Profile.owner_id == current_user.id,
+                Profile.is_default == True
+            )
+        )
+
+        if not profile:
+            raise HTTPException(status_code=404, detail="Default profile not found")
+
+        profile_id = profile.id
+
+    # Guard against blank queries
+    if not q.strip():
+        return []
+
+    # Clamp top_k to prevent abuse
+    top_k = max(1, min(top_k, 50))
+
+    # Normalize query whitespace before embedding
+    q = q.strip()
+
+    semantic_search = get_semantic_search()
+
+    results = semantic_search.search(
+        db,
+        q,
+        owner_id=current_user.id,
+        profile_id=profile_id,
+        top_k=top_k,
+        min_similarity=min_similarity,
+    )
+
+    # Deduplicate by file while preserving ranking
+    seen = set()
+    files = []
+
+    for result in results:
+        if result.file_id in seen:
+            continue
+
+        seen.add(result.file_id)
+
+        file = db.get(File, result.file_id)
+
+        if not file:
+            continue
+
+        files.append({
+            "id": str(file.id),
+            "name": file.name,
+            "size_bytes": file.size_bytes,
+            "mime_type": file.mime_type,
+            "folder_id": str(file.folder_id) if file.folder_id else None,
+            "created_at": file.created_at,
+            "updated_at": file.updated_at,
+            "status": file.status,
+
+            # semantic metadata
+            "snippet": (
+                result.chunk_text[:250] + "..."
+                if len(result.chunk_text) > 250
+                else result.chunk_text
+            ),
+            "similarity": round(result.similarity, 4),
+            "tab_id": str(result.tab_id) if result.tab_id else None,
+        })
+
+    return files
+
 # Generate presigned URL for preview
 @router.get("/{file_id}/preview")
 async def preview_file(
@@ -546,7 +637,11 @@ async def preview_file(
                 Profile.is_default == True
             )
         )
-        profile_id = profile.id if profile else None
+
+        if not profile:
+            raise HTTPException(status_code=404, detail="Default profile not found")
+
+        profile_id = profile.id
 
     file = db.scalar(
         select(File).where(
@@ -592,7 +687,11 @@ async def download_file(
                 Profile.is_default == True
             )
         )
-        profile_id = profile.id if profile else None
+
+        if not profile:
+            raise HTTPException(status_code=404, detail="Default profile not found")
+
+        profile_id = profile.id
 
     file = db.scalar(
         select(File).where(
@@ -665,7 +764,11 @@ async def delete_file(
                 Profile.is_default == True
             )
         )
-        profile_id = profile.id if profile else None
+
+        if not profile:
+            raise HTTPException(status_code=404, detail="Default profile not found")
+
+        profile_id = profile.id
 
     file = db.scalar(
         select(File).where(
@@ -830,18 +933,28 @@ async def update_tab_content(
     tab.content = json.dumps(payload.content)
     tab.updated_at = now
 
-    # Also sync to S3 so the master file is always current
+     # Also sync to S3 so the master file is always current
     file = db.get(File, tab.file_id)
     if file:
+        try:
+            # Read the current document structure
+            response = s3.get_object(Bucket=BUCKET_NAME, Key=file.s3_key)
+            current_doc = json.loads(response["Body"].read().decode("utf-8"))
+        except ClientError:
+            current_doc = {}
+
+        # Merge this tab's content into the document under its tab ID key
+        current_doc[str(tab_id)] = payload.content
+
         try:
             s3.put_object(
                 Bucket=BUCKET_NAME,
                 Key=file.s3_key,
-                Body=json.dumps(payload.content),
+                Body=json.dumps(current_doc),
                 ContentType="application/json"
             )
             file.updated_at = now
-            file.size_bytes = len(json.dumps(payload.content).encode("utf-8"))
+            file.size_bytes = len(json.dumps(current_doc).encode("utf-8"))
             file.status = "completed"
         except ClientError:
             pass # DB update remains even if S3 is momentarily unreachable
