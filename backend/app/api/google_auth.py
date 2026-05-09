@@ -27,6 +27,7 @@ oauth.register(
 )
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
 
 
 def generate_unique_username(name: str, db: Session) -> str:
@@ -42,12 +43,12 @@ def generate_unique_username(name: str, db: Session) -> str:
 # Redirect to Google
 @router.get("/google/login")
 async def google_login(request: Request):
-    redirect_uri = request.url_for("google_callback")
+    redirect_uri = f"{BACKEND_URL}/api/auth/google/callback"
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
 # Handle callback
-@router.get("/google/callback", name="google_callback")
+@router.get("/google/callback")
 async def google_callback(request: Request, db: Session = Depends(get_db)):
     try:
         # Exchange code for token
@@ -99,7 +100,7 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
 
         # Redirect to frontend
         return RedirectResponse(
-            url=f"{FRONTEND_URL}/oauth-success?token={access_token}"
+            url=f"{FRONTEND_URL}/#/oauth-success?token={access_token}"
         )
 
     except Exception as e:

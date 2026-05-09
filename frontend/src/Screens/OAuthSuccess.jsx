@@ -1,14 +1,15 @@
 import { useEffect, useContext } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { ProfileContext } from "../UI/ProfileContext";
 
 export default function OAuthSuccess() {
-  const [params] = useSearchParams();
   const navigate = useNavigate();
   const { refreshProfiles } = useContext(ProfileContext);
 
   useEffect(() => {
-    const token = params.get("token");
+    const hash = window.location.hash;
+    const queryString = hash.includes("?") ? hash.split("?")[1] : "";
+    const token = new URLSearchParams(queryString).get("token");
 
     if (!token) {
       navigate("/login");
@@ -18,7 +19,7 @@ export default function OAuthSuccess() {
     const finishLogin = async () => {
       // Clear any stale profile selection from a previous session
       localStorage.removeItem("currentProfileId");
-
+      
       // Store token 
       localStorage.setItem("token", token);
 
