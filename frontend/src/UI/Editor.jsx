@@ -17,6 +17,7 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
   const saveTimeoutRef = useRef(null);
   const isInitialized = useRef(false); 
   const lastLoadedTabId = useRef(null);
+  const isLayouting = useRef(false); 
   const docId = doc?.id || doc?.file_id;
   const [isVisible, setIsVisible] = useState(false);
 
@@ -51,7 +52,6 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
     };
   }, []);
   
-  // Helper to get current text/HTML from the DOM for saving
   const getLiveContent = () => {
     if (!containerRef.current) return { pages: [""] };
     const allPages = containerRef.current.querySelectorAll("[contentEditable]");
@@ -59,20 +59,16 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
     return { pages };
   };
 
-  // Autosave logic to persist changes to the server
   const triggerAutoSave = () => {
     setSaveStatus("saving");
     const contentObj = getLiveContent();
 
-    // Tell the parent (App.jsx) exactly what is on screen right now
     if (onContentChange) onContentChange(contentObj);
-
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     
     saveTimeoutRef.current = setTimeout(async () => {
       try {
         if (!activeTabId) return;
-        
         const token = localStorage.getItem("token");
         const url = `${API_BASE}/api/files/tabs/${activeTabId}`;
         const body = JSON.stringify({ content: contentObj });
@@ -95,10 +91,16 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
     }, 1500);
   };
 
-  // Logic to move extra lines between pages to maintain document flow
+  // Optimized layout logic to prevent browser freezing
   const handleLayout = (el) => {
+    if (isLayouting.current) return; 
+    isLayouting.current = true;
+
     const parentPage = el.parentElement;
-    if (!parentPage) return;
+    if (!parentPage) {
+        isLayouting.current = false;
+        return;
+    }
 
     if (el.scrollHeight > PAGE_HEIGHT + OVERFLOW_BUFFER) { 
       let nextPage = parentPage.nextSibling;
@@ -106,37 +108,36 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
 
       const selection = window.getSelection();
       let cursorNode = null;
-
       if (selection.rangeCount > 0) {
         cursorNode = selection.getRangeAt(0).startContainer;
       }
 
       while (el.scrollHeight > PAGE_HEIGHT + OVERFLOW_BUFFER && el.childNodes.length > 0) {
         const movedNode = el.lastChild;
-
-        const shouldMoveCursor =
-          cursorNode && (movedNode === cursorNode || movedNode.contains(cursorNode));
+        const shouldMoveCursor = cursorNode && (movedNode === cursorNode || movedNode.contains(cursorNode));
 
         nextEditable.prepend(movedNode);
 
         if (shouldMoveCursor) {
           nextEditable.focus();
           const newRange = document.createRange();
-
           if (movedNode.firstChild) {
             newRange.setStart(movedNode.firstChild, 0);
           } else {
             newRange.setStart(movedNode, 0);
           }
-
           newRange.collapse(true);
           selection.removeAllRanges();
           selection.addRange(newRange);
         }
       }
-
-      handleLayout(nextEditable);
+      
       updatePageNumbers();
+      // Call layout on next page async to let the UI breathe
+      setTimeout(() => { 
+        isLayouting.current = false; 
+        handleLayout(nextEditable); 
+      }, 0);
     } 
     else if (el.scrollHeight < PAGE_HEIGHT) {
       const nextPage = parentPage.nextSibling;
@@ -153,13 +154,21 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
         if (nextEditable.childNodes.length === 0 || nextEditable.innerHTML === "<div><br></div>") {
           nextPage.remove();
           updatePageNumbers();
+          isLayouting.current = false;
         } else {
-          handleLayout(nextEditable);
+          setTimeout(() => { 
+            isLayouting.current = false; 
+            handleLayout(nextEditable); 
+          }, 0);
         }
+      } else {
+        isLayouting.current = false;
       }
+    } else {
+        isLayouting.current = false;
     }
   };
-
+  
   // Manages keyboard interactions like jumping pages on backspace
   const handleKeyDown = (el, e) => {
     if (e.key === "Enter") return;
@@ -172,7 +181,6 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
       const parentPage = el.parentElement;
       const prevPage = parentPage.previousSibling;
       if (!prevPage) return;
-
       if (range.startOffset !== 0) return;
 
       let node = range.startContainer;
@@ -180,24 +188,19 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
         node = node.parentNode;
       }
 
-      const isFirstBlock = node === el.firstChild;
-      if (!isFirstBlock) return;
+      if (node !== el.firstChild) return;
 
       const preRange = range.cloneRange();
       preRange.selectNodeContents(node);
       preRange.setEnd(range.startContainer, range.startOffset);
-
       if (preRange.toString().length !== 0) return;
 
       e.preventDefault();
-
       const prevEditable = prevPage.querySelector("[contentEditable]");
-
       prevEditable.focus();
       const newRange = document.createRange();
       newRange.selectNodeContents(prevEditable);
       newRange.collapse(false);
-
       selection.removeAllRanges();
       selection.addRange(newRange);
 
@@ -207,9 +210,7 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
             prevEditable.appendChild(el.firstChild);
           }
         }
-
         parentPage.remove();
-
         handleLayout(prevEditable);
         updatePageNumbers();
         triggerAutoSave();
@@ -217,7 +218,7 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
     }
   };
 
-  // Dynamically creates a new page DOM structure and adds event listeners
+// Dynamically creates a new page DOM structure and adds event listeners
   const createPage = (initialContent = "", index) => {
     if (!containerRef.current) return;
 
@@ -240,6 +241,14 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
       handleLayout(editable); 
       triggerAutoSave(); 
     });
+
+    //  Handle large pastes without crashing
+    editable.addEventListener("paste", (e) => {
+        e.preventDefault();
+        const text = e.clipboardData.getData("text/plain");
+        document.execCommand("insertText", false, text);
+        setTimeout(() => handleLayout(editable), 0);
+    });
     
     editable.addEventListener("keydown", (e) => handleKeyDown(editable, e));
 
@@ -254,18 +263,16 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
     labels.forEach((label, i) => { label.innerText = i + 1; });
   };
 
-  // Content Loading & Syncing from Tabs
+ // Content Loading & Syncing from Tabs
   useEffect(() => {
     if (!containerRef.current || !activeTabId || !tabs) return;
 
     const loadTabContent = () => {
       setIsVisible(false);
       containerRef.current.innerHTML = "";
-      
       const currentTab = tabs.find(t => String(t.id) === String(activeTabId));
       if (currentTab) {
         let contentData = currentTab.content;
-
         if (typeof contentData === "string" && contentData !== "") {
           try { contentData = JSON.parse(contentData); } 
           catch (e) { contentData = { pages: [""] }; }
@@ -284,7 +291,6 @@ const Editor = forwardRef(({ document: doc, setSaveStatus, onDocUpdate, activeTa
         isInitialized.current = true;
       }
     };
-
     loadTabContent();
   }, [activeTabId, tabs]);
 
