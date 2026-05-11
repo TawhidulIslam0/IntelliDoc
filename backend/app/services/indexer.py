@@ -82,7 +82,8 @@ class Indexer:
                 extracted_chars=0,
                 error="File not found",
             )
-
+        
+        # Prevent indexing unless the file is in the expected "ready" state
         if not force and file.status != self.ready_status:
             return IndexingResult(
                 file_id=file_id,
@@ -91,8 +92,19 @@ class Indexer:
                 extracted_chars=0,
                 error=f"File status is {file.status!r}, not {self.ready_status!r}",
             )
+        
+        # Do not index files that are in the trash
+        if file.is_deleted:
+            return IndexingResult(
+                file_id=file_id,
+                status="skipped",
+                num_chunks=0,
+                extracted_chars=0,
+                error="File is in trash — skipping indexing",
+            )
 
         try:
+            # Mark the file as currently being indexed
             file.status = self.indexing_status
             file.updated_at = self._now()
             db.commit()
@@ -100,6 +112,7 @@ class Indexer:
 
             indexed_chunks = self._build_chunks(db, file)
 
+            # If no valid text chunks were produced, remove any existing embeddings/chunks for this file
             if not indexed_chunks:
                 db.execute(delete(ChunkModel).where(ChunkModel.file_id == file.id))
                 file.status = self.failed_status
@@ -125,11 +138,13 @@ class Indexer:
             db.execute(delete(ChunkModel).where(ChunkModel.file_id == file.id))
 
             now = self._now()
+
+            # Store chunk rows temporarily before batch insertion
             rows: list[ChunkModel] = []
 
             for item, vector in zip(indexed_chunks, vectors):
                 chunk = item["chunk"]
-
+                # Create a database row representing one searchable chunk
                 rows.append(
                     ChunkModel(
                         file_id=file.id,
@@ -178,7 +193,7 @@ class Indexer:
     def index_ready_files(self, db: Session, *, limit: int = 25) -> list[IndexingResult]:
         files = db.scalars(
             select(File)
-            .where(File.status == self.ready_status)
+            .where(File.status == self.ready_status, File.is_deleted == False)
             .limit(limit)
         ).all()
 

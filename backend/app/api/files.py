@@ -475,7 +475,8 @@ async def list_files(
         folders = db.scalars(
             select(Folder).where(
                 Folder.owner_id == current_user.id,
-                Folder.profile_id == profile_id
+                Folder.profile_id == profile_id,
+                Folder.is_deleted == False
             )
         ).all()
         return [
@@ -490,11 +491,12 @@ async def list_files(
             for f in folders
         ]
 
-    # Base query: must belong to the user, the selected profile, AND be completed
+    # Base query: must belong to the user, the selected profile, be completed, and not trashed
     stmt = select(File).where(
         File.owner_id == current_user.id,
         File.profile_id == profile_id,
-        File.status.in_(["completed", "indexing", "indexed"])
+        File.status.in_(["completed", "indexing", "indexed"]),
+        File.is_deleted == False
     )
     
     # Search logic
@@ -628,10 +630,8 @@ async def preview_file(
                 Profile.is_default == True
             )
         )
-
         if not profile:
             raise HTTPException(status_code=404, detail="Default profile not found")
-
         profile_id = profile.id
 
     file = db.scalar(
@@ -678,10 +678,8 @@ async def download_file(
                 Profile.is_default == True
             )
         )
-
         if not profile:
             raise HTTPException(status_code=404, detail="Default profile not found")
-
         profile_id = profile.id
 
     file = db.scalar(
@@ -740,8 +738,8 @@ async def complete_upload(
     return {"message": "Upload completed and indexing started"}
 
 
-# Delete file from S3 and database
-@router.delete("/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
+# Move file to trash
+@router.delete("/{file_id}", status_code=status.HTTP_200_OK)
 async def delete_file(
     file_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
@@ -755,31 +753,28 @@ async def delete_file(
                 Profile.is_default == True
             )
         )
-
-        if not profile:
-            raise HTTPException(status_code=404, detail="Default profile not found")
-
-        profile_id = profile.id
+        profile_id = profile.id if profile else None
 
     file = db.scalar(
         select(File).where(
             File.id == file_id,
             File.owner_id == current_user.id,
-            File.profile_id == profile_id
+            File.profile_id == profile_id,
+            File.is_deleted == False
         )
     )
 
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
-    try:
-        s3.delete_object(Bucket=BUCKET_NAME, Key=file.s3_key)
-    except ClientError:
-        raise HTTPException(status_code=500, detail="Failed to delete file from storage")
-
-    db.delete(file)
+    now = datetime.now(timezone.utc)
+    trash_suffix = f"_trash_{int(now.timestamp())}"  # Avoids naming conflicts
+    file.name = file.name + trash_suffix
+    file.is_deleted = True
+    file.deleted_at = now.isoformat()
     db.commit()
-    return
+
+    return {"message": "File moved to trash"}
 
 
 # Editor can load file content
@@ -864,6 +859,10 @@ async def update_file_content(
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
+    # Prevent editing a file that is trashed
+    if file.is_deleted:
+        raise HTTPException(status_code=400, detail="File is in trash and cannot be edited.")
+
     content = payload.content
     if not isinstance(content, dict) or "pages" not in content:
         raise HTTPException(status_code=422, detail="Invalid content structure")
@@ -918,6 +917,11 @@ async def update_tab_content(
 
     if not tab:
         raise HTTPException(status_code=404, detail="Tab not found")
+
+    # Prevent editing a tab whose parent file is in the trash
+    parent_file = db.get(File, tab.file_id)
+    if parent_file and parent_file.is_deleted:
+        raise HTTPException(status_code=400, detail="File is in trash and cannot be edited.")
 
     # Sync content to the database
     now = datetime.now(timezone.utc).isoformat()

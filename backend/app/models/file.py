@@ -1,7 +1,7 @@
 import uuid
 
 from typing import Optional
-from sqlalchemy import String, Text, BigInteger, ForeignKey, UniqueConstraint
+from sqlalchemy import String, Text, BigInteger, Boolean, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.user import User
 from app.models.folder import Folder
@@ -32,6 +32,8 @@ class File(Base):
     total_chunks: Mapped[Optional[int]] = mapped_column(nullable=True)
     uploaded_chunks: Mapped[int] = mapped_column(default=0)
     is_upload_complete: Mapped[bool] = mapped_column(default=False)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="false")
+    deleted_at: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
     # Relationships
     owner: Mapped["User"] = relationship(back_populates="files")
