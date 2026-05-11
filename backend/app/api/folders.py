@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import select
@@ -8,6 +9,7 @@ from pydantic import BaseModel, ConfigDict
 from app.database import get_db
 from app.api.users import get_current_user
 from app.models.folder import Folder
+from app.models.file import File
 from app.models.user import User
 from app.models.profile import Profile
 
@@ -86,10 +88,11 @@ def get_folders(
             raise HTTPException(status_code=404, detail="Default profile not found")
         profile_id = profile.id
 
-    # Base query: must belong to the user and the selected profile
+    # Base query: must belong to the user, the selected profile, and not be trashed
     stmt = select(Folder).where(
         Folder.owner_id == current_user.id,
-        Folder.profile_id == profile_id
+        Folder.profile_id == profile_id,
+        Folder.is_deleted == False
     )
 
     # Search Logic
@@ -134,7 +137,8 @@ def rename_folder(
     db.refresh(folder)
     return folder
 
-# Delete a fodler
+# Move folder to trash.
+# Also trashes all nested subfolders and files recursively.
 @router.delete("/{folder_id}")
 def delete_folder(
     folder_id: uuid.UUID,
@@ -149,17 +153,61 @@ def delete_folder(
         )
         profile_id = profile.id if profile else None
 
-    # Fetch folder safely
-    stmt = select(Folder).where(
-        Folder.id == folder_id,
-        Folder.owner_id == current_user.id,
-        Folder.profile_id == profile_id
+    # Fetch folder safely — only allow trashing folders that are not already trashed
+    folder = db.scalar(
+        select(Folder).where(
+            Folder.id == folder_id,
+            Folder.owner_id == current_user.id,
+            Folder.profile_id == profile_id,
+            Folder.is_deleted == False
+        )
     )
-    folder = db.scalar(stmt)
     if not folder:
         raise HTTPException(status_code=404, detail="Folder not found")
 
-    db.delete(folder)
-    db.commit()
+    now = datetime.now(timezone.utc)
+    deleted_at_str = now.isoformat()
+    trash_suffix = f"_trash_{int(now.timestamp())}"
 
-    return {"message": "Folder deleted"}
+    # Trash the top-level folder itself
+    folder.is_deleted = True
+    folder.deleted_at = deleted_at_str
+    folder.name = folder.name + trash_suffix
+
+    # BFS traversal to find and trash all nested subfolders and their files.
+    queue = [folder_id]
+    while queue:
+        current_ids = queue
+        queue = []
+
+        # Trashes all files directly inside the current batch of folders
+        child_files = db.scalars(
+            select(File).where(
+                File.folder_id.in_(current_ids),
+                File.owner_id == current_user.id,
+                File.is_deleted == False
+            )
+        ).all()
+
+        for child_file in child_files:
+            child_file.is_deleted = True
+            child_file.deleted_at = deleted_at_str
+            child_file.name = child_file.name + trash_suffix
+
+        # Find the next level of subfolders to process
+        child_folders = db.scalars(
+            select(Folder).where(
+                Folder.parent_id.in_(current_ids),
+                Folder.owner_id == current_user.id,
+                Folder.is_deleted == False
+            )
+        ).all()
+        
+        for child_folder in child_folders:
+            child_folder.is_deleted = True
+            child_folder.deleted_at = deleted_at_str
+            child_folder.name = child_folder.name + trash_suffix
+            queue.append(child_folder.id)
+
+    db.commit()
+    return {"message": "Folder moved to trash"}
