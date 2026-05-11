@@ -21,6 +21,7 @@ from app.models.profile import Profile
 from app.models.folder import Folder
 from app.models.tab import Tab 
 from app.services.indexer import Indexer
+from app.services.semantic_search import SemanticSearchService
 
 # Load environment variables from .env
 load_dotenv()
@@ -96,6 +97,14 @@ def get_indexer() -> Indexer:
     if _indexer is None:
         _indexer = Indexer()
     return _indexer
+
+_semantic_search: SemanticSearchService | None = None
+
+def get_semantic_search() -> SemanticSearchService:
+    global _semantic_search
+    if _semantic_search is None:
+        _semantic_search = SemanticSearchService()
+    return _semantic_search
 
 def _run_indexer(file_id: uuid.UUID) -> None:
     from app.database import SessionLocal
@@ -533,6 +542,79 @@ async def list_files(
         for file in files
     ]
 
+# Dedicated semantic search endpoint
+@router.get("/semantic-search")
+async def semantic_search_files(
+    q: str,
+    top_k: int = 10,
+    min_similarity: float = 0.40,
+    profile_id: Optional[uuid.UUID] = None,
+    db: Annotated[Session, Depends(get_db)] = None,
+    current_user: Annotated[User, Depends(get_current_user)] = None,
+):
+    # Default profile fallback
+    if not profile_id:
+        profile = db.scalar(
+            select(Profile).where(
+                Profile.owner_id == current_user.id,
+                Profile.is_default == True
+            )
+        )
+
+        if not profile:
+            raise HTTPException(status_code=404, detail="Default profile not found")
+
+        profile_id = profile.id
+
+    # Guard against blank queries
+    if not q.strip():
+        return []
+
+    # Clamp top_k to prevent abuse
+    top_k = max(1, min(top_k, 50))
+
+    # Normalize query whitespace before embedding
+    q = q.strip()
+
+    semantic_search = get_semantic_search()
+
+    results = semantic_search.search(
+        db,
+        q,
+        owner_id=current_user.id,
+        profile_id=profile_id,
+        top_k=top_k,
+        min_similarity=min_similarity,
+    )
+
+    files = []
+
+    for result in results:
+        files.append({
+            "id": str(result.file_id),
+            "name": result.file_name,
+            "size_bytes": result.size_bytes,
+            "mime_type": result.mime_type,
+            "folder_id": str(result.folder_id) if result.folder_id else None,
+
+            # semantic metadata
+            "snippet": (
+                result.chunk_text[:250] + "..."
+                if len(result.chunk_text) > 250
+                else result.chunk_text
+            ),
+            "similarity": round(result.similarity, 4),
+            "tab_id": str(result.tab_id) if result.tab_id else None,
+
+            # useful for future "jump to match" features
+            "chunk_id": str(result.chunk_id),
+            "chunk_index": result.chunk_index,
+            "start_char": result.start_char,
+            "end_char": result.end_char,
+        })
+
+    return files
+
 # Generate presigned URL for preview
 @router.get("/{file_id}/preview")
 async def preview_file(
@@ -548,7 +630,9 @@ async def preview_file(
                 Profile.is_default == True
             )
         )
-        profile_id = profile.id if profile else None
+        if not profile:
+            raise HTTPException(status_code=404, detail="Default profile not found")
+        profile_id = profile.id
 
     file = db.scalar(
         select(File).where(
@@ -594,7 +678,9 @@ async def download_file(
                 Profile.is_default == True
             )
         )
-        profile_id = profile.id if profile else None
+        if not profile:
+            raise HTTPException(status_code=404, detail="Default profile not found")
+        profile_id = profile.id
 
     file = db.scalar(
         select(File).where(
@@ -682,7 +768,7 @@ async def delete_file(
         raise HTTPException(status_code=404, detail="File not found")
 
     now = datetime.now(timezone.utc)
-    trash_suffix = f"_trash_{int(now.timestamp())}" # Avoids naming conflictrs
+    trash_suffix = f"_trash_{int(now.timestamp())}"  # Avoids naming conflicts
     file.name = file.name + trash_suffix
     file.is_deleted = True
     file.deleted_at = now.isoformat()

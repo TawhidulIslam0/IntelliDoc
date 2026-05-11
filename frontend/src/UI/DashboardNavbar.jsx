@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { ProfileContext } from "../UI/ProfileContext";
 import logo from "../assets/file_icon_logo.png";
 import logoutIcon from "../assets/logout.png";
-import { getFiles, getPreviewUrl } from "../api/fileService";
+import { getFiles, getPreviewUrl, semanticSearch } from "../api/fileService"; 
 import { getFolders } from "../api/folderService";
 import docxIcon from "../assets/docx_icon.png";
 import pdfIcon from "../assets/pdf_icon.png";
@@ -26,6 +26,33 @@ export default function DashboardNavbar({ user }) {
 
   const dropdownRef = useRef(null);
   const searchRef = useRef(null);
+
+  // Handle Semantic Search Trigger
+  const handleSemanticSearch = async () => {
+    if (!searchQuery.trim() || !currentProfile?.id) return;
+    
+    setIsSearching(true);
+    setShowSearchDropdown(false);
+    
+    try {
+      const results = await semanticSearch(currentProfile.id, searchQuery);
+      
+      // Navigate to dashboard and pass results via state
+      navigate("/dashboard", { 
+        state: { 
+          semanticResults: results, 
+          query: searchQuery 
+        } 
+      });
+      
+      setSearchQuery(""); // Clear bar after sending
+    } catch (err) {
+      console.error("Semantic search failed:", err);
+      alert("AI Search is currently unavailable.");
+    } finally {
+      setIsSearching(false);
+    }
+  };
 
   // Live Search Logic
   useEffect(() => {
@@ -165,10 +192,13 @@ export default function DashboardNavbar({ user }) {
         <div style={{ position: "relative", width: "100%", maxWidth: "700px" }}>
           <input
             type="text"
-            placeholder="Search"
+            placeholder="Search or ask a question..."
             value={searchQuery}
             onFocus={() => setShowSearchDropdown(true)}
             onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleSemanticSearch();
+            }}
             onMouseOver={(e) => {
               if (!showSearchDropdown) e.currentTarget.style.backgroundColor = "#DADCE0";
             }}
@@ -177,7 +207,7 @@ export default function DashboardNavbar({ user }) {
             }}
             style={{
               width: "100%",
-              padding: "12px 20px 12px 45px",
+              padding: "12px 85px 12px 45px", // Adjusted padding for AI button
               borderRadius: "8px",
               border: "none",
               outline: "none",
@@ -190,6 +220,33 @@ export default function DashboardNavbar({ user }) {
           <span style={{ position: "absolute", left: "15px", top: "50%", transform: "translateY(-50%)", color: "#5F6368" }}>
             🔍
           </span>
+
+          {/* Semantic Search Button */}
+          {searchQuery.trim().length > 0 && (
+            <button
+              onClick={handleSemanticSearch}
+              title="Search with AI"
+              style={{
+                position: "absolute",
+                right: "10px",
+                top: "50%",
+                transform: "translateY(-50%)",
+                background: "#8b5cf6",
+                color: "white",
+                border: "none",
+                borderRadius: "6px",
+                padding: "6px 10px",
+                cursor: "pointer",
+                fontSize: "12px",
+                fontWeight: "600",
+                display: "flex",
+                alignItems: "center",
+                gap: "4px"
+              }}
+            >
+              <span>✨</span> AI
+            </button>
+          )}
 
           {showSearchDropdown && (
             <div style={{
@@ -232,9 +289,9 @@ export default function DashboardNavbar({ user }) {
                         <div key={file.id} style={resultItemStyle} onClick={() => handleResultClick(file, 'file')} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F1F3F4"} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}>
                           <span style={{ marginRight: "12px", display: "flex", alignItems: "center", width: "20px" }}>
                             {file.name.toLowerCase().endsWith('.pdf') ? <img src={pdfIcon} alt="pdf" style={{ width: "20px", height: "20px" }} /> :
-                             file.name.toLowerCase().endsWith('.txt') ? <img src={txtIcon} alt="txt" style={{ width: "20px", height: "20px" }} /> : 
-                             file.name.toLowerCase().endsWith('.docx') ? <img src={docxIcon} alt="docx" style={{ width: "20px", height: "20px" }} /> : 
-                             <img src={logo} alt="doc" style={{ width: "20px", height: "20px" }} />}
+                               file.name.toLowerCase().endsWith('.txt') ? <img src={txtIcon} alt="txt" style={{ width: "20px", height: "20px" }} /> : 
+                               file.name.toLowerCase().endsWith('.docx') ? <img src={docxIcon} alt="docx" style={{ width: "20px", height: "20px" }} /> : 
+                               <img src={logo} alt="doc" style={{ width: "20px", height: "20px" }} />}
                           </span> {file.name.replace(/\.idoc$/, "")}
                         </div>
                       ))}

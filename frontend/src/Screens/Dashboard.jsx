@@ -174,6 +174,10 @@ const DashBoard = ({ setDocuments }) => {
   const [menuConfig, setMenuConfig] = useState(null); // Menu state
   const [draggedFile, setDraggedFile] = useState(null);
   
+  // AI Search States
+  const semanticResults = location.state?.semanticResults || null;
+  const searchQuery = location.state?.query || "";
+
   // Track specific file ID for server-side cancellation
   const [activeFileId, setActiveFileId] = useState(null);
 
@@ -303,6 +307,11 @@ const DashBoard = ({ setDocuments }) => {
       type: type,
       item: item
     });
+  };
+
+  // Helper to clear AI search
+  const clearSearch = () => {
+    navigate("/dashboard", { state: {} });
   };
 
   // Handle centralized menu actions
@@ -765,97 +774,170 @@ const DashBoard = ({ setDocuments }) => {
       <div style={{ flex: 1, padding: 20 }}>
         <div style={{ maxWidth: 850, margin: "0 auto" }}>
           
-          {/* Recent documents */}
-          <span style={{ fontWeight: 500, fontSize: 16 }}>Recent documents</span>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 150px)", gap: 25, marginTop: 20, marginBottom: 40 }}>
-            {recentDocs.length === 0 ? (
-              <div style={{ color: "#5f6368", fontSize: 13 }}>No recent documents.</div>
-            ) : (
-              recentDocs.map((doc) => (
-                <FileItem key={doc.id} doc={doc} onOpenDoc={handleOpenDoc} onOpenMenu={handleOpenMenu} isRecentDoc={true} onDragStart={handleDragStart} />
-              ))
-            )}
-          </div>
-
-          {/* Breadcrumb Navigation */}
-          <div style={{ marginBottom: 15, display: "flex", alignItems: "center", gap: 10, fontSize: 14 }}>
-            {folderStack.length > 0 && (
-              <button onClick={handleGoBack} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid #dadce0", cursor: "pointer", backgroundColor: "white" }}>
-                ← Back
-              </button>
-            )}
+          {semanticResults ? (
+            /* AI SEARCH RESULTS VIEW */
             <div>
-              <span
-                style={{ cursor: "pointer" }}
-                onClick={() => {
-                  setSearchParams({}); // Use URL update for home
-                  setFolderStack([]);
-                }}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  handleMoveFile(null);
-                }}
-              >
-                Home
-              </span>
-              {folderStack.map((folder, index) => (
-                <span key={folder.id}>
-                  {" / "}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                <span style={{ fontWeight: 600, fontSize: 18, color: "#1a73e8" }}>
+                  AI Search Results for: "{searchQuery}"
+                </span>
+                <button 
+                  onClick={clearSearch}
+                  style={{ padding: "8px 16px", borderRadius: 4, border: "1px solid #dadce0", cursor: "pointer", backgroundColor: "#fff" }}
+                >
+                  Clear Search
+                </button>
+              </div>
+
+              {semanticResults.length === 0 ? (
+                <div style={{ textAlign: "center", padding: 40, color: "#5f6368" }}>
+                  No relevant information found for this query.
+                </div>
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 150px)", gap: 25 }}>
+                  {semanticResults.map((result) => (
+                    <div key={result.id}>
+                      <FileItem
+                        doc={{
+                          id: result.id,
+                          name: result.name,
+                          mime_type: result.mime_type,
+                          size_bytes: result.size_bytes || 0,
+                        }}
+                        onOpenDoc={handleOpenDoc}
+                        onOpenMenu={handleOpenMenu}
+                        isRecentDoc={false}
+                        onDragStart={handleDragStart}
+                      />
+
+                      <div
+                        style={{
+                          fontSize: "11px",
+                          color: "#1a73e8",
+                          marginTop: "5px",
+                          textAlign: "center",
+                          fontWeight: 500,
+                        }}
+                      >
+                        Match: {Math.round((result.similarity || 0) * 100)}%
+                      </div>
+
+                      {result.snippet && (
+                        <div
+                          style={{
+                            marginTop: "6px",
+                            fontSize: "11px",
+                            color: "#5f6368",
+                            lineHeight: 1.4,
+                            maxHeight: "48px",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
+                          {result.snippet}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            /* REGULAR DASHBOARD VIEW */
+            <>
+              {/* Recent documents */}
+              <span style={{ fontWeight: 500, fontSize: 16 }}>Recent documents</span>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 150px)", gap: 25, marginTop: 20, marginBottom: 40 }}>
+                {recentDocs.length === 0 ? (
+                  <div style={{ color: "#5f6368", fontSize: 13 }}>No recent documents.</div>
+                ) : (
+                  recentDocs.map((doc) => (
+                    <FileItem key={doc.id} doc={doc} onOpenDoc={handleOpenDoc} onOpenMenu={handleOpenMenu} isRecentDoc={true} onDragStart={handleDragStart} />
+                  ))
+                )}
+              </div>
+
+              {/* Breadcrumb Navigation */}
+              <div style={{ marginBottom: 15, display: "flex", alignItems: "center", gap: 10, fontSize: 14 }}>
+                {folderStack.length > 0 && (
+                  <button onClick={handleGoBack} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid #dadce0", cursor: "pointer", backgroundColor: "white" }}>
+                    ← Back
+                  </button>
+                )}
+                <div>
                   <span
-                    style={{ cursor: "pointer", fontWeight: 500 }}
+                    style={{ cursor: "pointer" }}
                     onClick={() => {
-                      const newStack = folderStack.slice(0, index + 1);
-                      setSearchParams({ folderId: folder.id });
-                      setFolderStack(newStack);
+                      setSearchParams({}); // Use URL update for home
+                      setFolderStack([]);
                     }}
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={(e) => {
                       e.preventDefault();
-                      handleMoveFile(folder.id);
+                      handleMoveFile(null);
                     }}
                   >
-                    {folder.name}
+                    Home
                   </span>
-                </span>
-              ))}
-            </div>
-          </div>
+                  {folderStack.map((folder, index) => (
+                    <span key={folder.id}>
+                      {" / "}
+                      <span
+                        style={{ cursor: "pointer", fontWeight: 500 }}
+                        onClick={() => {
+                          const newStack = folderStack.slice(0, index + 1);
+                          setSearchParams({ folderId: folder.id });
+                          setFolderStack(newStack);
+                        }}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          handleMoveFile(folder.id);
+                        }}
+                      >
+                        {folder.name}
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              </div>
 
-          {/* Folders */}
-          <span style={{ fontWeight: 500, fontSize: 16 }}>Folders</span>
-          <div style={{ display: "flex", gap: 25, marginTop: 20, flexWrap: "wrap" }}>
-            {folders.map((folder) => (
-              <FolderItem key={folder.id} folder={folder} onFolderClick={handleFolderClick} onOpenMenu={handleOpenMenu} onDropFile={handleMoveFile} />
-            ))}
-          </div>
+              {/* Folders */}
+              <span style={{ fontWeight: 500, fontSize: 16 }}>Folders</span>
+              <div style={{ display: "flex", gap: 25, marginTop: 20, flexWrap: "wrap" }}>
+                {folders.map((folder) => (
+                  <FolderItem key={folder.id} folder={folder} onFolderClick={handleFolderClick} onOpenMenu={handleOpenMenu} onDropFile={handleMoveFile} />
+                ))}
+              </div>
 
-          {/* Files */}
-          <span style={{ fontWeight: 500, fontSize: 16, marginTop: 40, display: "block" }}>Files</span>
-          
-          {/* Progress Bar Display on top of Files Section */}
-          <FileProgressBar 
-            progress={uploadInfo.progress}
-            fileName={uploadInfo.fileName}
-            isUploading={uploadInfo.isUploading}
-            error={uploadInfo.error}
-            isInterrupted={isPaused}
-            onResume={handleResumeUpload}
-            onComplete={() => setUploadInfo(prev => ({...prev, isUploading: false}))}
-            onDismiss={() => setUploadInfo(prev => ({...prev, error: null}))}
-          />
+              {/* Files */}
+              <span style={{ fontWeight: 500, fontSize: 16, marginTop: 40, display: "block" }}>Files</span>
+              
+              {/* Progress Bar Display on top of Files Section */}
+              <FileProgressBar 
+                progress={uploadInfo.progress}
+                fileName={uploadInfo.fileName}
+                isUploading={uploadInfo.isUploading}
+                error={uploadInfo.error}
+                isInterrupted={isPaused}
+                onResume={handleResumeUpload}
+                onComplete={() => setUploadInfo(prev => ({...prev, isUploading: false}))}
+                onDismiss={() => setUploadInfo(prev => ({...prev, error: null}))}
+              />
 
-          {uploadedFiles.length === 0 ? (
-            <div style={{ marginTop: 20, textAlign: "center", color: "#5f6368" }}>
-              No files yet. Upload your first file.
-            </div>
-          ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 150px)", gap: 25, marginTop: 20 }}>
-              {uploadedFiles.map((doc) => (
-                <FileItem key={doc.id} doc={doc} onOpenDoc={handleOpenDoc} onOpenMenu={handleOpenMenu} isRecentDoc={false} onDragStart={handleDragStart} />
-              ))
-              }
-            </div>
+              {uploadedFiles.length === 0 ? (
+                <div style={{ marginTop: 20, textAlign: "center", color: "#5f6368" }}>
+                  No files yet. Upload your first file.
+                </div>
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 150px)", gap: 25, marginTop: 20 }}>
+                  {uploadedFiles.map((doc) => (
+                    <FileItem key={doc.id} doc={doc} onOpenDoc={handleOpenDoc} onOpenMenu={handleOpenMenu} isRecentDoc={false} onDragStart={handleDragStart} />
+                  ))
+                  }
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

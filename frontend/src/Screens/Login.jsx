@@ -76,9 +76,8 @@ const Login = () => {
   };
 
   const handleGoogleLogin = () => {
-    window.location.href =
-     `${API_BASE}/auth/google/login`;
-  };
+  window.location.href = `${API_BASE}/api/auth/google/login`;
+};
 
   return (
     <div className="container">

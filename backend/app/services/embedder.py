@@ -91,10 +91,18 @@ class Embedder:
         """Embed search queries."""
         return self._encode(texts)
 
-    def encode_document(self, text: str) -> list[float]:
+    def encode_document(self, text: str) -> list[float] | None:
+        """
+        Embed a single document and return its vector.
+        Returns None if the text is empty or embedding generation fails.
+        """
         vectors = self.encode_documents([text])
-        return vectors[0] if vectors else []
+        return vectors[0] if vectors else None
 
-    def encode_query(self, text: str) -> list[float]:
+    def encode_query(self, text: str) -> list[float] | None:
+        """
+        Embed a single query and return its vector.
+        Returns None if the text is empty or embedding generation fails.
+        """
         vectors = self.encode_queries([text])
-        return vectors[0] if vectors else []
+        return vectors[0] if vectors else None

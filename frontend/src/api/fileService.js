@@ -45,6 +45,35 @@ export const getFiles = async (profileId, folderId = null, search = "") => {
   return response.json();
 };
 
+export const semanticSearch = async (profileId, query, topK = 10) => {
+  const token = localStorage.getItem("token");
+
+  if (!profileId) {
+    profileId = localStorage.getItem("currentProfileId");
+  }
+
+  if (!profileId) throw new Error("No profile selected");
+
+  const params = new URLSearchParams();
+  params.append("profile_id", profileId);
+  params.append("q", query); 
+  params.append("top_k", topK);
+
+  const response = await fetch(
+    `${API_URL}/files/semantic-search?${params.toString()}`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(err || "Semantic search failed");
+  }
+
+  return response.json();
+};
+
 // Type + Size Validation
 const validateFile = (file) => {
   const name = file.name.toLowerCase();
