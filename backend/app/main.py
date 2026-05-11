@@ -14,6 +14,7 @@ from app.api.profile import router as profile_router
 from app.api.google_auth import router as google_router
 from app.api.export import router as export_router
 from app.api.tabs import router as tabs_router
+from app.api.trash import router as trash_router
 
 app = FastAPI()
 
@@ -23,7 +24,8 @@ app.include_router(folders_router, prefix="/api")
 app.include_router(export_router, prefix="/api")
 app.include_router(profile_router, prefix="/api")
 app.include_router(tabs_router, prefix="/api")
-app.include_router(google_router) 
+app.include_router(trash_router, prefix="/api")
+app.include_router(google_router)
 
 app.add_middleware(
     CORSMiddleware,
