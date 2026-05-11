@@ -92,6 +92,16 @@ class Indexer:
                 error=f"File status is {file.status!r}, not {self.ready_status!r}",
             )
 
+        # Do not index files that are in the trash
+        if file.is_deleted:
+            return IndexingResult(
+                file_id=file_id,
+                status="skipped",
+                num_chunks=0,
+                extracted_chars=0,
+                error="File is in trash — skipping indexing",
+            )
+
         try:
             file.status = self.indexing_status
             file.updated_at = self._now()
@@ -178,7 +188,7 @@ class Indexer:
     def index_ready_files(self, db: Session, *, limit: int = 25) -> list[IndexingResult]:
         files = db.scalars(
             select(File)
-            .where(File.status == self.ready_status)
+            .where(File.status == self.ready_status, File.is_deleted == False)
             .limit(limit)
         ).all()
 
