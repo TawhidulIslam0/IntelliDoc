@@ -4,7 +4,7 @@ import React, { useEffect, useState, useContext, useCallback, useRef } from "rea
 import { useNavigate, useSearchParams, useLocation } from "react-router-dom"; 
 import { uploadFile, getPreviewUrl, deleteFile, createBlankDoc, renameFile, moveFile, cancelFileUpload, getFileBlob, exportFile} from "../api/fileService";
 import { getFolders, createFolder, deleteFolder, renameFolder, downloadFolder } from "../api/folderService";
-import {  getTrashItems,  restoreItem,  permanentDelete } from "../api/trashService";
+import {  getTrashItems,  restoreItem,  permanentDelete, emptyTrash } from "../api/trashService";
 import binIcon from "../assets/bin_icon.png";
 import uploadIcon from "../assets/uploadbutton.png";
 import folderIcon from "../assets/folderbutton.png";
@@ -290,6 +290,32 @@ const isTrashView = searchParams.get("view") === "trash";
       window.history.replaceState({}, document.title);
     }
   }, [location]);
+
+  // Empty everything in the trash bin
+  const handleEmptyTrash = async () => {
+  // Defensive check to ensure we have a profile context
+  if (!currentProfile) return;
+
+  const confirmed = window.confirm(
+    "Are you sure? This will permanently delete all files and folders in the trash."
+  );
+
+  if (!confirmed) return;
+
+  try {
+    // Call your existing service function
+    await emptyTrash(currentProfile.id);
+    
+    // Clear the local state so the UI updates immediately
+    setFetchedDocuments([]);
+    setFolders([]);
+    
+    alert("Trash emptied successfully.");
+  } catch (err) {
+    console.error("Error emptying trash:", err);
+    alert("Failed to empty trash: " + err.message);
+  }
+};
 
   // Fetch folders for current profile
   const fetchFolders = useCallback(async () => {
@@ -1026,7 +1052,7 @@ return (
         </>
     )}
     
-    {/* Bin Icon: Always visible to toggle back */}
+    {/* Bin Icon: Always visible to toggle back to dashboard */}
     <img 
       src={binIcon} 
       alt="Trash" 
@@ -1046,6 +1072,35 @@ return (
       }} 
     />
 
+   {/* Empty Trash FAB - Moved up to 130 to clear the padded blue circle */}
+    {isTrashView && (uploadedFiles.length > 0 || folders.length > 0) && (
+      <div 
+        onClick={handleEmptyTrash} 
+        style={{ 
+          position: "fixed", 
+          bottom: 130, 
+          right: 30, 
+          width: 60, 
+          height: 60, 
+          backgroundColor: "#d93025", 
+          borderRadius: "50%", 
+          display: "flex", 
+          flexDirection: "column", 
+          alignItems: "center", 
+          justifyContent: "center", 
+          cursor: "pointer", 
+          zIndex: 1001, 
+          boxShadow: "0 4px 10px rgba(0,0,0,0.3)", 
+          color: "white", 
+          fontSize: "10px", 
+          fontWeight: "bold" 
+        }}
+      >
+        <span style={{ fontSize: "22px" }}>🗑️</span>
+        EMPTY
+      </div>
+    )}
+
     {file && !isTrashView && (
       <div style={{ position: "fixed", bottom: 190, right: 30, display: "flex", gap: "10px", zIndex: 1000 }}>
         {uploading && (
@@ -1059,7 +1114,7 @@ return (
            </button>
         )}
         <button onClick={handleCancelUpload} style={{ padding: "10px 20px", backgroundColor: "#d93025", color: "white", border: "none", borderRadius: 6, cursor: "pointer" }}>
-          Cancel
+           Cancel
         </button>
         {!uploading && !isPaused && (
           <button onClick={() => handleUpload()} style={{ padding: "10px 20px", backgroundColor: "#4285f4", color: "white", border: "none", borderRadius: 6, cursor: "pointer" }}>
