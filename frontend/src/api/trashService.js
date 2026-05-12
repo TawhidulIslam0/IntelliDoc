@@ -45,3 +45,20 @@ export const permanentDelete = async (itemId, type) => {
   });
   return response.ok;
 };
+
+// Empty all files and folder in the bin
+export const emptyTrash = async (profileId) => {
+  const url = profileId ? `${API_URL}/?profile_id=${profileId}` : `${API_URL}/`;
+  
+  const response = await fetch(url, {
+    method: "DELETE",
+    headers: getHeaders(),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.detail || "Failed to empty trash");
+  }
+  
+  return response.json();
+};
