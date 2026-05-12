@@ -50,6 +50,7 @@ export default function ContextMenu({ x, y, type, item, onClose, onAction }) {
   const renameIcon = isFolder ? renameFolderIcon : renameFileIcon;
   const deleteIcon = isFolder ? deleteFolderIcon : deleteFileIcon;
   const restoreIcon = isFolder ? restoreFolderIcon : restoreFileIcon;
+  const downloadIcon = downloadFileIcon;
 
     // Logic to determine if we show the "Download as..." in submenu
   const canShowExportOptions = isDoc && !isDeletedItem;
@@ -135,13 +136,17 @@ export default function ContextMenu({ x, y, type, item, onClose, onAction }) {
             ) : (
                /* MAIN CONTEXT MENU */
               <>
-                {/* RENAME */}
-                {(isFolder || isDoc) && (
-                  <div style={itemStyle} className="context-menu-item" onClick={() => { onAction('rename', item); onClose(); }}>
-                    <img src={renameIcon} alt="rename" width="18" height="18" />
-                    <span>Rename</span>
-                  </div>
-                )}
+                 {/* RENAME */}
+            {(isFolder || isDoc) && (
+              <div 
+                style={itemStyle} 
+                className="context-menu-item"
+                onClick={() => { onAction('rename', item); onClose(); }}
+              >
+                <img src={renameIcon} alt="rename" width="18" height="18" />
+                <span>Rename</span>
+              </div>
+            )}
 
               {/* DOWNLOAD */}
              {(isDoc || isFile || isFolder) && (
