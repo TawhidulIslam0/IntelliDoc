@@ -1,9 +1,11 @@
 /* eslint-disable no-unused-vars */
 /* eslint-disable no-undef */
 import React, { useEffect, useState, useContext, useCallback, useRef } from "react";
-import { useNavigate, useSearchParams, useLocation } from "react-router-dom"; // Added useLocation
+import { useNavigate, useSearchParams, useLocation } from "react-router-dom"; 
 import { uploadFile, getPreviewUrl, deleteFile, createBlankDoc, renameFile, moveFile, cancelFileUpload, getFileBlob, exportFile} from "../api/fileService";
 import { getFolders, createFolder, deleteFolder, renameFolder, downloadFolder } from "../api/folderService";
+import {  getTrashItems,  restoreItem,  permanentDelete } from "../api/trashService";
+import binIcon from "../assets/bin_icon.png";
 import uploadIcon from "../assets/uploadbutton.png";
 import folderIcon from "../assets/folderbutton.png";
 import { ProfileContext } from "../UI/ProfileContext"; 
@@ -18,19 +20,27 @@ const formatDisplayName = (name) => {
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
-
 // Sub-component for Folder to handle individual hover state
-const FolderItem = ({ folder, onFolderClick, onOpenMenu, onDropFile }) => {
+const FolderItem = ({ folder, onFolderClick, onOpenMenu, onDropFile, isTrashMode }) => {
   const [isHovered, setIsHovered] = useState(false);
+  
+  // Guard to prevent entering folders in trash
+  const handleFolderClick = () => {
+    if (isTrashMode) return; 
+    onFolderClick(folder);
+  };
+
   return (
     <div
-      onClick={() => onFolderClick(folder)}
+      onClick={handleFolderClick}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onDragOver={(e) => {
+        if (isTrashMode) return;
         e.preventDefault();
       }}
       onDrop={(e) => {
+        if (isTrashMode) return;
         e.preventDefault();
         e.stopPropagation();
         onDropFile(folder.id);
@@ -43,10 +53,11 @@ const FolderItem = ({ folder, onFolderClick, onOpenMenu, onDropFile }) => {
         display: "flex",
         alignItems: "center",
         padding: "0 10px",
-        cursor: "pointer",
+        cursor: isTrashMode ? "default" : "pointer",
         backgroundColor: isHovered ? "#f1f3f4" : "#fff", 
         position: "relative",
         transition: "background-color 0.1s",
+        opacity: isTrashMode ? 0.6 : 1, // Visual cue for deleted state
       }}
     > 
       <span style={{ marginRight: 8 }}>📁</span>
@@ -76,28 +87,39 @@ const FolderItem = ({ folder, onFolderClick, onOpenMenu, onDropFile }) => {
 };
 
 // Sub-component for File to handle individual hover state
-const FileItem = ({ doc, onOpenDoc, onOpenMenu, isRecentDoc, onDragStart }) => {
+const FileItem = ({ doc, onOpenDoc, onOpenMenu, isRecentDoc, onDragStart, isTrashMode }) => {
   const [isHovered, setIsHovered] = useState(false);
+
+  // Guard to prevent opening documents in trash
+  const handleFileClick = () => {
+    if (isTrashMode) {
+      // Optional: You can add a toast or alert here
+      return;
+    }
+    onOpenDoc(doc);
+  };
+
   return (
     <div
-      draggable
-      onDragStart={(e) => onDragStart(e, doc)}
+      draggable={!isTrashMode} // Disable dragging if it's in the bin
+      onDragStart={(e) => !isTrashMode && onDragStart(e, doc)}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       style={{ 
         width: 150, 
-        cursor: "pointer", 
+        cursor: isTrashMode ? "default" : "pointer", 
         position: "relative",
         borderRadius: 8,
         backgroundColor: isHovered ? "#e8f0fe" : "transparent", 
-        transition: "background-color 0.2s"
+        transition: "background-color 0.2s",
+        opacity: isTrashMode ? 0.6 : 1, // Visual cue for deleted state
       }} 
     >
-      <div onClick={() => onOpenDoc(doc)}>
+      <div onClick={handleFileClick}>
         <div
           style={{
             height: 190,
-            border: isHovered ? "1px solid #4285f4" : "1px solid #dadce0",  
+            border: isHovered && !isTrashMode ? "1px solid #4285f4" : "1px solid #dadce0",  
             borderRadius: 4,
             backgroundColor: "white",
             display: "flex",
@@ -106,7 +128,7 @@ const FileItem = ({ doc, onOpenDoc, onOpenMenu, isRecentDoc, onDragStart }) => {
             transition: "border 0.2s"
           }}
         >
-          <span style={{ fontSize: 16, fontWeight: 600, color: isHovered ? "#4285f4" : "#202124" }}>
+          <span style={{ fontSize: 16, fontWeight: 600, color: isHovered && !isTrashMode ? "#4285f4" : "#202124" }}>
             {isRecentDoc ? "DOC" : 
               doc.mime_type === "application/pdf" ? "PDF" : 
               doc.mime_type === "text/plain" ? "TXT" : 
@@ -123,7 +145,7 @@ const FileItem = ({ doc, onOpenDoc, onOpenMenu, isRecentDoc, onDragStart }) => {
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
-                color: isHovered ? "#1967d2" : "#202124"  
+                color: isHovered && !isTrashMode ? "#1967d2" : "#202124"  
               }}
             >
               {formatDisplayName(doc.name)}
@@ -173,6 +195,9 @@ const DashBoard = ({ setDocuments }) => {
   const [previewUrl, setPreviewUrl] = useState(null);
   const [menuConfig, setMenuConfig] = useState(null); // Menu state
   const [draggedFile, setDraggedFile] = useState(null);
+
+  // Trash Bin States
+const isTrashView = searchParams.get("view") === "trash";
   
   // AI Search States
   const semanticResults = location.state?.semanticResults || null;
@@ -202,8 +227,13 @@ const DashBoard = ({ setDocuments }) => {
   // Extract loading state from ProfileContext to prevent premature rendering
   const { currentProfile, loading: profilesLoading } = useContext(ProfileContext); 
 
-  const recentDocs = fetchedDocuments.filter(doc => doc.name.endsWith(".idoc"));
-  const uploadedFiles = fetchedDocuments.filter(doc => !doc.name.endsWith(".idoc"));
+  //  Filter by trash state
+  const recentDocs = fetchedDocuments.filter(doc =>  doc.name.endsWith(".idoc") && (isTrashView ? doc.is_deleted === true : !doc.is_deleted)
+  );
+  const uploadedFiles = fetchedDocuments.filter(doc => !doc.name.endsWith(".idoc") && (isTrashView ? doc.is_deleted === true : !doc.is_deleted)
+  );
+  const displayFolders = folders.filter(f => (isTrashView ? f.is_deleted === true : !f.is_deleted)
+  );
 
   // Fetch user on mount
   useEffect(() => {
@@ -235,6 +265,9 @@ const DashBoard = ({ setDocuments }) => {
   // Sync folderStack with URL's folderId parameter
   useEffect(() => {
     const folderId = searchParams.get("folderId");
+    // If we are in trash view, we ignore folder navigation
+    if (isTrashView) return;
+
     if (folderId) {
       if (!currentFolderId || String(currentFolderId) !== String(folderId)) {
         setFolderStack([{ id: folderId, name: "Folder" }]); 
@@ -244,7 +277,7 @@ const DashBoard = ({ setDocuments }) => {
         setFolderStack([]);
       }
     }
-  }, [searchParams]);
+  }, [searchParams, isTrashView]);
 
   // Handle incoming search results that want to open a preview
   useEffect(() => {
@@ -275,9 +308,13 @@ const DashBoard = ({ setDocuments }) => {
 
       try {
         const targetId = folderId !== null ? folderId : currentFolderId;
-        const url = targetId
-        ? `${API_BASE}/api/files/?folder_id=${targetId}&profile_id=${currentProfile.id}`
-         : `${API_BASE}/api/files/?profile_id=${currentProfile.id}`;
+        
+        // If in trash view, hit the trash endpoint instead
+        const url = isTrashView 
+          ? `${API_BASE}/api/trash/?profile_id=${currentProfile.id}`
+          : targetId
+            ? `${API_BASE}/api/files/?folder_id=${targetId}&profile_id=${currentProfile.id}`
+            : `${API_BASE}/api/files/?profile_id=${currentProfile.id}`;
 
         const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
 
@@ -289,15 +326,15 @@ const DashBoard = ({ setDocuments }) => {
         console.error("Failed to fetch files:", err);
       }
     },
-    [currentProfile, currentFolderId]
+    [currentProfile, currentFolderId, isTrashView]
   );
 
-  // Added currentFolderId to dependency array to trigger refresh on navigation
+  // Added currentFolderId and isTrashView to trigger refresh on navigation or mode toggle
   useEffect(() => {
     if (!currentProfile) return;
     fetchFolders();
     fetchFiles();
-  }, [currentProfile, currentFolderId, fetchFolders, fetchFiles]);
+  }, [currentProfile, currentFolderId, isTrashView, fetchFolders, fetchFiles]);
 
   // Handle Context Menu Opening
   const handleOpenMenu = (e, type, item) => {
@@ -308,7 +345,7 @@ const DashBoard = ({ setDocuments }) => {
       item: item
     });
   };
-
+  
   // Helper to clear AI search
   const clearSearch = () => {
     navigate("/dashboard", { state: {} });
@@ -316,8 +353,30 @@ const DashBoard = ({ setDocuments }) => {
 
   // Handle centralized menu actions
   const handleMenuAction = async (action, item) => {
+    // Differentiate types for the service calls
+    const itemType = item.name ? (item.name.endsWith(".idoc") ? 'file' : 'file') : 'folder';
+    
     if (action === 'delete') {
+      // This now triggers the Soft Delete (Move to Trash)
       menuConfig.type === 'folder' ? handleDeleteFolder(item.id) : handleDeleteFile(item.id);
+    } else if (action === 'restore') {
+      try {
+        await restoreItem(item.id, menuConfig.type === 'folder' ? 'folder' : 'file');
+        await fetchFiles();
+        await fetchFolders();
+      } catch (err) {
+        alert("Failed to restore: " + err.message);
+      }
+    } else if (action === 'permanent_delete') {
+      if (window.confirm("This will permanently delete the item. This action cannot be undone.")) {
+        try {
+          await permanentDelete(item.id, menuConfig.type === 'folder' ? 'folder' : 'file');
+          await fetchFiles();
+          await fetchFolders();
+        } catch (err) {
+          alert("Failed to permanently delete: " + err.message);
+        }
+      }
     } else if (action === 'download') {
   try {
     if (menuConfig.type === 'folder') {
@@ -430,11 +489,13 @@ const DashBoard = ({ setDocuments }) => {
     }
   };
 
-  // Delete file handler
+  // Delete file handler (Updated to support Soft Delete)
   const handleDeleteFile = async (fileId) => {
-    if (!window.confirm("Are you sure you want to delete this file?")) return;
+    if (!window.confirm("Are you sure you want to move this file to the trash?")) return;
     try {
+      // We call the standard delete, which your backend should handle as is_deleted = true
       await deleteFile(fileId);
+      // Remove from the current active list
       setFetchedDocuments((prev) => prev.filter((file) => file.id !== fileId));
     } catch (err) {
       console.error(err);
@@ -639,6 +700,7 @@ const DashBoard = ({ setDocuments }) => {
 
   // Open folder
   const handleFolderClick = (folder) => {
+    if (isTrashView) return; // Prevent entering folders while in trash
     setSearchParams({ folderId: folder.id }); // Update URL instead of just local state
     setFolderStack((prev) => [...prev, folder]);
   };
@@ -656,13 +718,14 @@ const DashBoard = ({ setDocuments }) => {
 
   // Drag file handler
   const handleDragStart = (e, doc) => {
+    if (isTrashView) return; // Prevent dragging if in trash
     setDraggedFile(doc);
     e.dataTransfer.effectAllowed = "move";
   };
 
   // Move file handler
   const handleMoveFile = async (targetFolderId) => {
-    if (!draggedFile || !currentProfile) return;
+    if (!draggedFile || !currentProfile || isTrashView) return;
 
     try {
       await moveFile(draggedFile.id, targetFolderId, currentProfile.id);
@@ -677,10 +740,11 @@ const DashBoard = ({ setDocuments }) => {
     }
   };
 
-  // Delete folder
+  // Delete folder (Updated to support Soft Delete)
   const handleDeleteFolder = async (folderId) => {
-    if (!window.confirm("Delete this folder?")) return;
+    if (!window.confirm("Move this folder and its contents to the trash?")) return;
     try {
+      // Backend handles setting is_deleted = true for folder and children
       await deleteFolder(folderId, currentProfile.id);
       setFolders((prev) => prev.filter((folder) => folder.id !== folderId));
       if (currentFolderId === folderId) {
@@ -701,48 +765,48 @@ const DashBoard = ({ setDocuments }) => {
   }
 
 // If previewUrl is present show only the preview content 
-  if (previewUrl) {
-    return (
-      <div style={{ flex: 1, backgroundColor: "white", display: "flex", flexDirection: "column" }}>
-        <div style={{ padding: "10px 20px", borderBottom: "1px solid #E5E7EB", display: "flex", alignItems: "center" }}>
-          <button 
-            onClick={() => {
-              setPreviewUrl(null); 
-              
-              // Clear the contents of the container so the old doc is removed from the DOM
-              const container = document.getElementById("preview-container");
-              if (container) {
-                container.innerHTML = ''; 
-              }
-            }} 
-            style={{ padding: "8px 16px", borderRadius: 4, border: "1px solid #dadce0", cursor: "pointer", backgroundColor: "white", fontSize: 14 }}
-          >
-            ← Back to Dashboard
-          </button>
-        </div>
-        <div style={{ flex: 1, overflow: "auto" }}>
-          {previewUrl === "docx-view-mode" ? (
-             <div id="preview-container" style={{ padding: "20px" }}></div>
-          ) : (
-             <iframe 
-               src={previewUrl} 
-               title="File Preview" 
-               style={{ width: "100%", height: "calc(100vh - 120px)", border: "none" }} 
-             />
-          )}
-        </div>
-      </div>
-    );
-  }
+if (previewUrl) {
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-      {user && (
-        <div style={{ padding: 20, fontSize: 18, fontWeight: 500 }}>
-          Welcome, {user.username}!
-        </div>
-      )}
+    <div style={{ flex: 1, backgroundColor: "white", display: "flex", flexDirection: "column" }}>
+      <div style={{ padding: "10px 20px", borderBottom: "1px solid #E5E7EB", display: "flex", alignItems: "center" }}>
+        <button 
+          onClick={() => {
+            setPreviewUrl(null); 
+            const container = document.getElementById("preview-container");
+            if (container) {
+              container.innerHTML = ''; 
+            }
+          }} 
+          style={{ padding: "8px 16px", borderRadius: 4, border: "1px solid #dadce0", cursor: "pointer", backgroundColor: "white", fontSize: 14 }}
+        >
+          ← Back to Dashboard
+        </button>
+      </div>
+      <div style={{ flex: 1, overflow: "auto" }}>
+        {previewUrl === "docx-view-mode" ? (
+            <div id="preview-container" style={{ padding: "20px" }}></div>
+        ) : (
+            <iframe 
+              src={previewUrl} 
+              title="File Preview" 
+              style={{ width: "100%", height: "calc(100vh - 120px)", border: "none" }} 
+            />
+        )}
+      </div>
+    </div>
+  );
+}
 
-      {/* Document Section */}
+return (
+  <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+    {user && (
+      <div style={{ padding: 20, fontSize: 18, fontWeight: 500 }}>
+        Welcome, {user.username}!
+      </div>
+    )}
+
+    {/* Document Section - Hidden in Trash View */}
+    {!isTrashView && (
       <div style={{ backgroundColor: "#f1f3f4", padding: "18px 0 40px 0" }}>
         <div style={{ maxWidth: 850, margin: "0 auto" }}>
           <span style={{ fontSize: 16 }}>Start a new document</span>
@@ -770,221 +834,245 @@ const DashBoard = ({ setDocuments }) => {
           </div>
         </div>
       </div>
+    )}
 
-      <div style={{ flex: 1, padding: 20 }}>
-        <div style={{ maxWidth: 850, margin: "0 auto" }}>
-          
-          {semanticResults ? (
-            /* AI SEARCH RESULTS VIEW */
-            <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-                <span style={{ fontWeight: 600, fontSize: 18, color: "#1a73e8" }}>
-                  AI Search Results for: "{searchQuery}"
-                </span>
-                <button 
-                  onClick={clearSearch}
-                  style={{ padding: "8px 16px", borderRadius: 4, border: "1px solid #dadce0", cursor: "pointer", backgroundColor: "#fff" }}
-                >
-                  Clear Search
-                </button>
-              </div>
-
-              {semanticResults.length === 0 ? (
-                <div style={{ textAlign: "center", padding: 40, color: "#5f6368" }}>
-                  No relevant information found for this query.
-                </div>
-              ) : (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 150px)", gap: 25 }}>
-                  {semanticResults.map((result) => (
-                    <div key={result.id}>
-                      <FileItem
-                        doc={{
-                          id: result.id,
-                          name: result.name,
-                          mime_type: result.mime_type,
-                          size_bytes: result.size_bytes || 0,
-                        }}
-                        onOpenDoc={handleOpenDoc}
-                        onOpenMenu={handleOpenMenu}
-                        isRecentDoc={false}
-                        onDragStart={handleDragStart}
-                      />
-
-                      <div
-                        style={{
-                          fontSize: "11px",
-                          color: "#1a73e8",
-                          marginTop: "5px",
-                          textAlign: "center",
-                          fontWeight: 500,
-                        }}
-                      >
-                        Match: {Math.round((result.similarity || 0) * 100)}%
-                      </div>
-
-                      {result.snippet && (
-                        <div
-                          style={{
-                            marginTop: "6px",
-                            fontSize: "11px",
-                            color: "#5f6368",
-                            lineHeight: 1.4,
-                            maxHeight: "48px",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                          }}
-                        >
-                          {result.snippet}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
+    <div style={{ flex: 1, padding: 20 }}>
+      <div style={{ maxWidth: 850, margin: "0 auto" }}>
+        
+        {semanticResults ? (
+          /* AI SEARCH RESULTS VIEW */
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <span style={{ fontWeight: 600, fontSize: 18, color: "#1a73e8" }}>
+                AI Search Results for: "{searchQuery}"
+              </span>
+              <button 
+                onClick={clearSearch}
+                style={{ padding: "8px 16px", borderRadius: 4, border: "1px solid #dadce0", cursor: "pointer", backgroundColor: "#fff" }}
+              >
+                Clear Search
+              </button>
             </div>
-          ) : (
-            /* REGULAR DASHBOARD VIEW */
-            <>
-              {/* Recent documents */}
-              <span style={{ fontWeight: 500, fontSize: 16 }}>Recent documents</span>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 150px)", gap: 25, marginTop: 20, marginBottom: 40 }}>
-                {recentDocs.length === 0 ? (
-                  <div style={{ color: "#5f6368", fontSize: 13 }}>No recent documents.</div>
-                ) : (
-                  recentDocs.map((doc) => (
-                    <FileItem key={doc.id} doc={doc} onOpenDoc={handleOpenDoc} onOpenMenu={handleOpenMenu} isRecentDoc={true} onDragStart={handleDragStart} />
-                  ))
-                )}
-              </div>
 
-              {/* Breadcrumb Navigation */}
-              <div style={{ marginBottom: 15, display: "flex", alignItems: "center", gap: 10, fontSize: 14 }}>
-                {folderStack.length > 0 && (
-                  <button onClick={handleGoBack} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid #dadce0", cursor: "pointer", backgroundColor: "white" }}>
-                    ← Back
-                  </button>
-                )}
-                <div>
-                  <span
-                    style={{ cursor: "pointer" }}
-                    onClick={() => {
-                      setSearchParams({}); // Use URL update for home
-                      setFolderStack([]);
-                    }}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      handleMoveFile(null);
-                    }}
-                  >
-                    Home
-                  </span>
-                  {folderStack.map((folder, index) => (
-                    <span key={folder.id}>
-                      {" / "}
-                      <span
-                        style={{ cursor: "pointer", fontWeight: 500 }}
-                        onClick={() => {
-                          const newStack = folderStack.slice(0, index + 1);
-                          setSearchParams({ folderId: folder.id });
-                          setFolderStack(newStack);
-                        }}
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          handleMoveFile(folder.id);
-                        }}
-                      >
-                        {folder.name}
-                      </span>
-                    </span>
-                  ))}
-                </div>
+            {semanticResults.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 40, color: "#5f6368" }}>
+                No relevant information found for this query.
               </div>
-
-              {/* Folders */}
-              <span style={{ fontWeight: 500, fontSize: 16 }}>Folders</span>
-              <div style={{ display: "flex", gap: 25, marginTop: 20, flexWrap: "wrap" }}>
-                {folders.map((folder) => (
-                  <FolderItem key={folder.id} folder={folder} onFolderClick={handleFolderClick} onOpenMenu={handleOpenMenu} onDropFile={handleMoveFile} />
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 150px)", gap: 25 }}>
+                {semanticResults.map((result) => (
+                  <div key={result.id}>
+                    <FileItem
+                      doc={{
+                        id: result.id,
+                        name: result.name,
+                        mime_type: result.mime_type,
+                        size_bytes: result.size_bytes || 0,
+                      }}
+                      onOpenDoc={handleOpenDoc}
+                      onOpenMenu={handleOpenMenu}
+                      isRecentDoc={false}
+                      onDragStart={handleDragStart}
+                    />
+                    <div style={{ fontSize: "11px", color: "#1a73e8", marginTop: "5px", textAlign: "center", fontWeight: 500 }}>
+                      Match: {Math.round((result.similarity || 0) * 100)}%
+                    </div>
+                  </div>
                 ))}
               </div>
+            )}
+          </div>
+        ) : (
+          /* REGULAR DASHBOARD VIEW */
+          <>
+            {/* Recent documents - Hidden in Trash View */}
+            {!isTrashView && (
+              <>
+                <span style={{ fontWeight: 500, fontSize: 16 }}>Recent documents</span>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 150px)", gap: 25, marginTop: 20, marginBottom: 40 }}>
+                  {recentDocs.length === 0 ? (
+                    <div style={{ color: "#5f6368", fontSize: 13 }}>No recent documents.</div>
+                  ) : (
+                    recentDocs.map((doc) => (
+                      <FileItem key={doc.id} doc={doc} onOpenDoc={handleOpenDoc} onOpenMenu={handleOpenMenu} isRecentDoc={true} onDragStart={handleDragStart} />
+                    ))
+                  )}
+                </div>
+              </>
+            )}
 
-              {/* Files */}
-              <span style={{ fontWeight: 500, fontSize: 16, marginTop: 40, display: "block" }}>Files</span>
-              
-              {/* Progress Bar Display on top of Files Section */}
-              <FileProgressBar 
-                progress={uploadInfo.progress}
-                fileName={uploadInfo.fileName}
-                isUploading={uploadInfo.isUploading}
-                error={uploadInfo.error}
-                isInterrupted={isPaused}
-                onResume={handleResumeUpload}
-                onComplete={() => setUploadInfo(prev => ({...prev, isUploading: false}))}
-                onDismiss={() => setUploadInfo(prev => ({...prev, error: null}))}
-              />
+            {/* Breadcrumb Navigation */}
+            <div style={{ marginBottom: 15, display: "flex", alignItems: "center", gap: 10, fontSize: 14 }}>
+              {folderStack.length > 0 && !isTrashView && (
+                <button onClick={handleGoBack} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid #dadce0", cursor: "pointer", backgroundColor: "white" }}>
+                  ← Back
+                </button>
+              )}
+              <div>
+                <span
+                  style={{ cursor: "pointer" }}
+                  onClick={() => {
+                    setSearchParams({}); 
+                    setFolderStack([]);
+                  }}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    handleMoveFile(null);
+                  }}
+                >
+                  {isTrashView ? "Trash" : "Home"}
+                </span>
+                {!isTrashView && folderStack.map((folder, index) => (
+                  <span key={folder.id}>
+                    {" / "}
+                    <span
+                      style={{ cursor: "pointer", fontWeight: 500 }}
+                      onClick={() => {
+                        const newStack = folderStack.slice(0, index + 1);
+                        setSearchParams({ folderId: folder.id });
+                        setFolderStack(newStack);
+                      }}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        handleMoveFile(folder.id);
+                      }}
+                    >
+                      {folder.name}
+                    </span>
+                  </span>
+                ))}
+              </div>
+            </div>
 
+            {/* Folders Section - Filtered by Trash State */}
+            <span style={{ fontWeight: 500, fontSize: 16 }}>
+                {isTrashView ? "Deleted Folders" : "Folders"}
+            </span>
+            <div style={{ display: "flex", gap: 25, marginTop: 20, flexWrap: "wrap" }}>
+              {folders
+                .filter((folder) => isTrashView ? folder.is_deleted : !folder.is_deleted)
+                .map((folder) => (
+                <FolderItem 
+                  key={folder.id} 
+                  folder={folder} 
+                  isTrashMode={isTrashView}
+                  onFolderClick={handleFolderClick} 
+                  onOpenMenu={handleOpenMenu} 
+                  onDropFile={handleMoveFile} 
+                />
+              ))}
+            </div>
+
+            {/* Files Section */}
+            <span style={{ fontWeight: 500, fontSize: 16, marginTop: 40, display: "block" }}>
+                {isTrashView ? "Deleted Files" : "Files"}
+            </span>
+            
+            <FileProgressBar 
+              progress={uploadInfo.progress}
+              fileName={uploadInfo.fileName}
+              isUploading={uploadInfo.isUploading}
+              error={uploadInfo.error}
+              isInterrupted={isPaused}
+              onResume={handleResumeUpload}
+              onComplete={() => setUploadInfo(prev => ({...prev, isUploading: false}))}
+              onDismiss={() => setUploadInfo(prev => ({...prev, error: null}))}
+            />
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 150px)", gap: 25, marginTop: 20 }}>
               {uploadedFiles.length === 0 ? (
                 <div style={{ marginTop: 20, textAlign: "center", color: "#5f6368" }}>
-                  No files yet. Upload your first file.
+                  {isTrashView ? "Trash is empty." : "No files yet."}
                 </div>
               ) : (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 150px)", gap: 25, marginTop: 20 }}>
-                  {uploadedFiles.map((doc) => (
-                    <FileItem key={doc.id} doc={doc} onOpenDoc={handleOpenDoc} onOpenMenu={handleOpenMenu} isRecentDoc={false} onDragStart={handleDragStart} />
-                  ))
-                  }
-                </div>
+                uploadedFiles.map((doc) => (
+                  <FileItem 
+                    key={doc.id} 
+                    doc={doc} 
+                    isTrashMode={isTrashView}
+                    onOpenDoc={handleOpenDoc} 
+                    onOpenMenu={handleOpenMenu} 
+                    isRecentDoc={false} 
+                    onDragStart={handleDragStart} 
+                  />
+                ))
               )}
-            </>
-          )}
-        </div>
+            </div>
+          </>
+        )}
       </div>
-
-      {/* Hidden file input */}
-      <input type="file" id="fileUploadInput" style={{ display: "none" }} onChange={handleFileChange} accept=".txt,.pdf,.docx" />
-
-      {/* UI Buttons */}
-      <img src={folderIcon} alt="Create Folder" onClick={handleCreateFolder} style={{ position: "fixed", bottom: 110, right: 30, width: 60, height: 60, cursor: "pointer", zIndex: 1000 }} />
-      <img src={uploadIcon} alt="Upload" onClick={() => document.getElementById("fileUploadInput").click()} style={{ position: "fixed", bottom: 30, right: 30, width: 60, height: 60, cursor: "pointer", zIndex: 1000 }} />
-
-      {file && (
-        <div style={{ position: "fixed", bottom: 190, right: 30, display: "flex", gap: "10px", zIndex: 1000 }}>
-          {uploading && (
-             <button onClick={handlePauseUpload} style={{ padding: "10px 20px", backgroundColor: "#f9ab00", color: "white", border: "none", borderRadius: 6, cursor: "pointer" }}>
-               Pause
-             </button>
-          )}
-          {isPaused && (
-             <button onClick={handleResumeUpload} style={{ padding: "10px 20px", backgroundColor: "#34a853", color: "white", border: "none", borderRadius: 6, cursor: "pointer" }}>
-               Resume
-             </button>
-          )}
-          <button onClick={handleCancelUpload} style={{ padding: "10px 20px", backgroundColor: "#d93025", color: "white", border: "none", borderRadius: 6, cursor: "pointer" }}>
-            Cancel
-          </button>
-          {!uploading && !isPaused && (
-            <button onClick={() => handleUpload()} style={{ padding: "10px 20px", backgroundColor: "#4285f4", color: "white", border: "none", borderRadius: 6, cursor: "pointer" }}>
-                Upload {file.name}
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Context Menu Rendering */}
-      {menuConfig && (
-        <ContextMenu 
-          x={menuConfig.x} 
-          y={menuConfig.y} 
-          type={menuConfig.type} 
-          item={menuConfig.item} 
-          onClose={() => setMenuConfig(null)} 
-          onAction={handleMenuAction}
-        />
-      )}
     </div>
-  );
+
+    {/* Hidden file input */}
+    <input type="file" id="fileUploadInput" style={{ display: "none" }} onChange={handleFileChange} accept=".txt,.pdf,.docx" />
+
+    {/* UI Buttons - Only show Folder/Upload if NOT in Trash View */}
+    {!isTrashView && (
+        <>
+            <img src={folderIcon} alt="Create Folder" onClick={handleCreateFolder} style={{ position: "fixed", bottom: 110, right: 30, width: 60, height: 60, cursor: "pointer", zIndex: 1000 }} />
+            <img src={uploadIcon} alt="Upload" onClick={() => document.getElementById("fileUploadInput").click()} style={{ position: "fixed", bottom: 30, right: 30, width: 60, height: 60, cursor: "pointer", zIndex: 1000 }} />
+        </>
+    )}
+    
+    {/* Bin Icon: Always visible to toggle back */}
+    <img 
+      src={binIcon} 
+      alt="Trash" 
+      onClick={() => setSearchParams(isTrashView ? {} : { view: "trash" })} 
+      style={{ 
+        position: "fixed", 
+        bottom: isTrashView ? 30 : 190, 
+        right: 30, 
+        width: 60, 
+        height: 60, 
+        cursor: "pointer", 
+        zIndex: 1000, 
+        backgroundColor: isTrashView ? "#e8f0fe" : "transparent", 
+        borderRadius: "50%", 
+        padding: isTrashView ? "10px" : "0",
+        border: isTrashView ? "2px solid #4285f4" : "none" 
+      }} 
+    />
+
+    {file && !isTrashView && (
+      <div style={{ position: "fixed", bottom: 190, right: 30, display: "flex", gap: "10px", zIndex: 1000 }}>
+        {uploading && (
+           <button onClick={handlePauseUpload} style={{ padding: "10px 20px", backgroundColor: "#f9ab00", color: "white", border: "none", borderRadius: 6, cursor: "pointer" }}>
+             Pause
+           </button>
+        )}
+        {isPaused && (
+           <button onClick={handleResumeUpload} style={{ padding: "10px 20px", backgroundColor: "#34a853", color: "white", border: "none", borderRadius: 6, cursor: "pointer" }}>
+             Resume
+           </button>
+        )}
+        <button onClick={handleCancelUpload} style={{ padding: "10px 20px", backgroundColor: "#d93025", color: "white", border: "none", borderRadius: 6, cursor: "pointer" }}>
+          Cancel
+        </button>
+        {!uploading && !isPaused && (
+          <button onClick={() => handleUpload()} style={{ padding: "10px 20px", backgroundColor: "#4285f4", color: "white", border: "none", borderRadius: 6, cursor: "pointer" }}>
+              Upload {file.name}
+          </button>
+        )}
+      </div>
+    )}
+
+    {/* Context Menu */}
+    {menuConfig && (
+      <ContextMenu 
+        x={menuConfig.x} 
+        y={menuConfig.y} 
+        type={menuConfig.type} 
+        item={menuConfig.item} 
+        isTrashMode={isTrashView}
+        onClose={() => setMenuConfig(null)} 
+        onAction={handleMenuAction}
+      />
+    )}
+  </div>
+);
 };
 
 export default DashBoard;
