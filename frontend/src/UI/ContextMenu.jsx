@@ -18,7 +18,7 @@ export default function ContextMenu({ x, y, type, item, onClose, onAction }) {
     // State to toggle between main menu and download format selection
   const [showDownloadOptions, setShowDownloadOptions] = useState(false);
 
-  const isDeletedItem = item.is_deleted === true;
+  const isDeletedItem = item.is_deleted === true || item.deleted_at != null;
 
   useLayoutEffect(() => {
     if (!menuRef.current) return;

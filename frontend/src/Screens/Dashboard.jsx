@@ -228,11 +228,14 @@ const isTrashView = searchParams.get("view") === "trash";
   const { currentProfile, loading: profilesLoading } = useContext(ProfileContext); 
 
   //  Filter by trash state
-  const recentDocs = fetchedDocuments.filter(doc =>  doc.name.endsWith(".idoc") && (isTrashView ? doc.is_deleted === true : !doc.is_deleted)
+  const recentDocs = fetchedDocuments.filter(doc =>
+    doc.name.endsWith(".idoc") && (isTrashView ? true : !doc.is_deleted)
   );
-  const uploadedFiles = fetchedDocuments.filter(doc => !doc.name.endsWith(".idoc") && (isTrashView ? doc.is_deleted === true : !doc.is_deleted)
+  const uploadedFiles = fetchedDocuments.filter(doc =>
+    !doc.name.endsWith(".idoc") && (isTrashView ? true : !doc.is_deleted)
   );
-  const displayFolders = folders.filter(f => (isTrashView ? f.is_deleted === true : !f.is_deleted)
+  const displayFolders = folders.filter(f =>
+    isTrashView ? true : !f.is_deleted
   );
 
   // Fetch user on mount
@@ -307,17 +310,24 @@ const isTrashView = searchParams.get("view") === "trash";
       if (!token) return;
 
       try {
+        if (isTrashView) {
+          const res = await fetch(`${API_BASE}/api/trash/?profile_id=${currentProfile.id}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setFetchedDocuments(data.filter((item) => item.type === "file"));
+            setFolders(data.filter((item) => item.type === "folder"));
+          }
+          return;
+        }
+
         const targetId = folderId !== null ? folderId : currentFolderId;
-        
-        // If in trash view, hit the trash endpoint instead
-        const url = isTrashView 
-          ? `${API_BASE}/api/trash/?profile_id=${currentProfile.id}`
-          : targetId
-            ? `${API_BASE}/api/files/?folder_id=${targetId}&profile_id=${currentProfile.id}`
-            : `${API_BASE}/api/files/?profile_id=${currentProfile.id}`;
+        const url = targetId
+          ? `${API_BASE}/api/files/?folder_id=${targetId}&profile_id=${currentProfile.id}`
+          : `${API_BASE}/api/files/?profile_id=${currentProfile.id}`;
 
         const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-
         if (res.ok) {
           const data = await res.json();
           setFetchedDocuments(data);
@@ -332,7 +342,7 @@ const isTrashView = searchParams.get("view") === "trash";
   // Added currentFolderId and isTrashView to trigger refresh on navigation or mode toggle
   useEffect(() => {
     if (!currentProfile) return;
-    fetchFolders();
+    if (!isTrashView) fetchFolders();
     fetchFiles();
   }, [currentProfile, currentFolderId, isTrashView, fetchFolders, fetchFiles]);
 
@@ -952,7 +962,7 @@ return (
             </span>
             <div style={{ display: "flex", gap: 25, marginTop: 20, flexWrap: "wrap" }}>
               {folders
-                .filter((folder) => isTrashView ? folder.is_deleted : !folder.is_deleted)
+                .filter((folder) => isTrashView ? true : !folder.is_deleted)
                 .map((folder) => (
                 <FolderItem 
                   key={folder.id} 
