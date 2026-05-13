@@ -93,7 +93,6 @@ const FileItem = ({ doc, onOpenDoc, onOpenMenu, isRecentDoc, onDragStart, isTras
   // Guard to prevent opening documents in trash
   const handleFileClick = () => {
     if (isTrashMode) {
-      // Optional: You can add a toast or alert here
       return;
     }
     onOpenDoc(doc);
@@ -529,7 +528,7 @@ const isTrashView = searchParams.get("view") === "trash";
   const handleDeleteFile = async (fileId) => {
     if (!window.confirm("Are you sure you want to move this file to the trash?")) return;
     try {
-      // We call the standard delete, which your backend should handle as is_deleted = true
+      // We call the standard delete, which our backend handle is_deleted = true
       await deleteFile(fileId);
       // Remove from the current active list
       setFetchedDocuments((prev) => prev.filter((file) => file.id !== fileId));
@@ -1044,7 +1043,7 @@ return (
     {/* Hidden file input */}
     <input type="file" id="fileUploadInput" style={{ display: "none" }} onChange={handleFileChange} accept=".txt,.pdf,.docx" />
 
-    {/* UI Buttons - Only show Folder/Upload if NOT in Trash View */}
+    {/* UI Buttons Only show Folder/Upload if NOT in Trash View */}
     {!isTrashView && (
         <>
             <img src={folderIcon} alt="Create Folder" onClick={handleCreateFolder} style={{ position: "fixed", bottom: 110, right: 30, width: 60, height: 60, cursor: "pointer", zIndex: 1000 }} />
@@ -1052,27 +1051,10 @@ return (
         </>
     )}
     
-    {/* Bin Icon: Always visible to toggle back to dashboard */}
-    <img 
-      src={binIcon} 
-      alt="Trash" 
-      onClick={() => setSearchParams(isTrashView ? {} : { view: "trash" })} 
-      style={{ 
-        position: "fixed", 
-        bottom: isTrashView ? 30 : 190, 
-        right: 30, 
-        width: 60, 
-        height: 60, 
-        cursor: "pointer", 
-        zIndex: 1000, 
-        backgroundColor: isTrashView ? "#e8f0fe" : "transparent", 
-        borderRadius: "50%", 
-        padding: isTrashView ? "10px" : "0",
-        border: isTrashView ? "2px solid #4285f4" : "none" 
-      }} 
-    />
+    {/* Bin Icon Always visible to toggle back to dashboard */}
+    <img src={binIcon} alt="Trash" onClick={() => setSearchParams(isTrashView ? {} : { view: "trash" })} style={{ position: "fixed", bottom: isTrashView ? 30 : 190, right: 30, width: 60, height: 60, cursor: "pointer", zIndex: 1000, backgroundColor: isTrashView ? "#e8f0fe" : "transparent", borderRadius: "50%",  padding: isTrashView ? "10px" : "0", border: isTrashView ? "2px solid #4285f4" : "none" }} />
 
-   {/* Empty Trash FAB - Moved up to 130 to clear the padded blue circle */}
+   {/* Empty Trash FAB */}
     {isTrashView && (uploadedFiles.length > 0 || folders.length > 0) && (
       <div 
         onClick={handleEmptyTrash} 
