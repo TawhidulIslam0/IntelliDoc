@@ -76,6 +76,7 @@ npm run dev
   - PDF
   - DOCX
   - TXT
+  - iDOC
 - Splits documents into chunks
 - Generates vector embeddings
 - Stores embeddings in PostgreSQL using pgvector
