@@ -547,7 +547,7 @@ async def list_files(
 async def semantic_search_files(
     q: str,
     top_k: int = 10,
-    min_similarity: float = 0.40,
+    min_similarity: float = 0.60,
     profile_id: Optional[uuid.UUID] = None,
     db: Annotated[Session, Depends(get_db)] = None,
     current_user: Annotated[User, Depends(get_current_user)] = None,

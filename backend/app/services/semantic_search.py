@@ -65,7 +65,7 @@ class SemanticSearchService:
         file_id: UUID | None = None,
         tab_id: UUID | None = None,
         top_k: int = 5,
-        min_similarity: float = 0.40,
+        min_similarity: float = 0.60,
     ) -> list[SearchResult]:
 
         if top_k <= 0:
