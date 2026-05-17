@@ -108,7 +108,6 @@ npm run dev
 ### Storage
 - AWS S3 (or Local Storage)
 
-### Machine Learning
-- OpenAI Embeddings (or HuggingFace Sentence Transformers)
-- PyPDF / pdfplumber
-- python-docx
+### Machine learning & embeddings
+- BAAI/bge-m3
+- CPU Torch
